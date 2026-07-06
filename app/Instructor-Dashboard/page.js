@@ -127,14 +127,14 @@ export default function InstructorDashboard() {
   // ─── MY COURSES (real data) ────────────────────────────────────────────────
   const MyCourses = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">My Courses</h2>
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">My Courses</h2>
         <div className="flex gap-3">
           <button onClick={fetchMyCourses} className="text-gray-500 hover:text-orange-500 transition p-2 rounded-lg hover:bg-orange-50">
             <RefreshCw className="w-4 h-4" />
           </button>
           <button onClick={() => setActiveTab("create")} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600 transition flex items-center gap-2">
-            <PlusCircle className="w-4 h-4" /> Create Course
+            <PlusCircle className="w-4 h-4" /> <span className="hidden sm:inline">Create Course</span><span className="sm:hidden">New</span>
           </button>
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function InstructorDashboard() {
           <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : myCourses.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-16 text-center">
+        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-10 sm:p-16 text-center">
           <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="font-bold text-gray-700 text-lg mb-2">No courses yet</h3>
           <p className="text-gray-500 text-sm mb-6">Create your first course and start teaching!</p>
@@ -153,78 +153,144 @@ export default function InstructorDashboard() {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-              <tr>
-                <th className="px-6 py-4 font-medium">Course</th>
-                <th className="px-6 py-4 font-medium">Category</th>
-                <th className="px-6 py-4 font-medium">Price</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {myCourses.map((course) => (
-                <tr key={course.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {course.thumbnail_url ? (
-                        <img src={course.thumbnail_url} alt={course.title} className="w-12 h-9 rounded object-cover" />
-                      ) : (
-                        <div className="w-12 h-9 bg-gray-100 rounded flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-400" /></div>
-                      )}
-                      <div>
-                        <p className="font-medium text-gray-900 line-clamp-1">{course.title}</p>
-                        <p className="text-xs text-gray-400">{course.level}</p>
-                      </div>
+        <>
+          {/* ── Mobile: Card Layout (hidden on md+) ── */}
+          <div className="flex flex-col gap-4 md:hidden">
+            {myCourses.map((course) => (
+              <div key={course.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  {course.thumbnail_url ? (
+                    <img src={course.thumbnail_url} alt={course.title} className="w-16 h-12 rounded-lg object-cover shrink-0" />
+                  ) : (
+                    <div className="w-16 h-12 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
+                      <ImageIcon className="w-5 h-5 text-gray-400" />
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{course.category}</td>
-                  <td className="px-6 py-4 text-gray-600">₹{parseFloat(course.price || 0).toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                      course.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                    }`}>{course.status === 'published' ? 'Published' : 'Draft'}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        title={course.status === 'published' ? 'Set as Draft' : 'Publish'}
-                        onClick={async () => {
-                          const newStatus = course.status === 'published' ? 'draft' : 'published';
-                          await fetch('/api/courses', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id, status: newStatus }) });
-                          fetchMyCourses();
-                        }}
-                        className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded transition"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </button>
-                      <button
-                        title="Add Lessons"
-                        onClick={() => { setSelectedCourseId(course.id); setSelectedCourseTitle(course.title); setActiveTab('upload'); }}
-                        className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition"
-                      >
-                        <Video className="w-4 h-4" />
-                      </button>
-                      <button
-                        title="Delete"
-                        onClick={async () => {
-                          if (!confirm('Delete this course?')) return;
-                          await fetch('/api/courses', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id }) });
-                          fetchMyCourses();
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">{course.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{course.level}</p>
+                  </div>
+                  <span className={`shrink-0 px-2 py-1 rounded-full text-xs font-bold ${
+                    course.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {course.status === 'published' ? 'Live' : 'Draft'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span className="bg-gray-100 px-2 py-1 rounded-md">{course.category}</span>
+                    <span className="font-semibold text-gray-800">₹{parseFloat(course.price || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      title={course.status === 'published' ? 'Set as Draft' : 'Publish'}
+                      onClick={async () => {
+                        const newStatus = course.status === 'published' ? 'draft' : 'published';
+                        await fetch('/api/courses', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id, status: newStatus }) });
+                        fetchMyCourses();
+                      }}
+                      className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded transition"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      title="Add Lessons"
+                      onClick={() => { setSelectedCourseId(course.id); setSelectedCourseTitle(course.title); setActiveTab('upload'); }}
+                      className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition"
+                    >
+                      <Video className="w-4 h-4" />
+                    </button>
+                    <button
+                      title="Delete"
+                      onClick={async () => {
+                        if (!confirm('Delete this course?')) return;
+                        await fetch('/api/courses', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id }) });
+                        fetchMyCourses();
+                      }}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Desktop: Table Layout (hidden below md) ── */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Course</th>
+                  <th className="px-6 py-4 font-medium">Category</th>
+                  <th className="px-6 py-4 font-medium">Price</th>
+                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {myCourses.map((course) => (
+                  <tr key={course.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {course.thumbnail_url ? (
+                          <img src={course.thumbnail_url} alt={course.title} className="w-12 h-9 rounded object-cover" />
+                        ) : (
+                          <div className="w-12 h-9 bg-gray-100 rounded flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-400" /></div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900 line-clamp-1">{course.title}</p>
+                          <p className="text-xs text-gray-400">{course.level}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">{course.category}</td>
+                    <td className="px-6 py-4 text-gray-600">₹{parseFloat(course.price || 0).toLocaleString()}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                        course.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                      }`}>{course.status === 'published' ? 'Published' : 'Draft'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          title={course.status === 'published' ? 'Set as Draft' : 'Publish'}
+                          onClick={async () => {
+                            const newStatus = course.status === 'published' ? 'draft' : 'published';
+                            await fetch('/api/courses', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id, status: newStatus }) });
+                            fetchMyCourses();
+                          }}
+                          className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded transition"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="Add Lessons"
+                          onClick={() => { setSelectedCourseId(course.id); setSelectedCourseTitle(course.title); setActiveTab('upload'); }}
+                          className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition"
+                        >
+                          <Video className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="Delete"
+                          onClick={async () => {
+                            if (!confirm('Delete this course?')) return;
+                            await fetch('/api/courses', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: course.id }) });
+                            fetchMyCourses();
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

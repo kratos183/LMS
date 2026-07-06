@@ -199,7 +199,7 @@ export default function AdminDashboard() {
   const UserManagement = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">User Management</h2>
         <button
           onClick={() => {
             setUsersLoading(true)
@@ -220,69 +220,110 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="px-6 py-4 font-medium">User</th>
-              <th className="px-6 py-4 font-medium">Current Role</th>
-              <th className="px-6 py-4 font-medium">Change Role</th>
-              <th className="px-6 py-4 font-medium">Last Sign In</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {usersLoading ? (
-              <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                  <span>Loading users from Supabase...</span>
+      {usersLoading ? (
+        <div className="flex flex-col items-center py-16 gap-2">
+          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm text-gray-400">Loading users from Supabase...</span>
+        </div>
+      ) : users.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-10 text-center text-gray-400">No users found.</div>
+      ) : (
+        <>
+          {/* ── Mobile: Card Layout ── */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {users.map((user) => (
+              <div key={user.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
+                    {(user.username || user.email || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{user.username || '—'}</p>
+                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  </div>
+                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold capitalize ${roleBadge(user.role)}`}>
+                    {user.role}
+                  </span>
                 </div>
-              </td></tr>
-            ) : users.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400">No users found.</td></tr>
-            ) : (
-              users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
-                        {(user.username || user.email || 'U').charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{user.username || '—'}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${roleBadge(user.role)}`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
+                <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                  <p className="text-xs text-gray-400">
+                    {user.lastSignIn ? new Date(user.lastSignIn).toLocaleDateString() : 'Never signed in'}
+                  </p>
+                  <div className="flex items-center gap-2">
                     <select
                       value={user.role}
                       disabled={roleChanging[user.id]}
                       onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-orange-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-500 transition disabled:opacity-50"
                     >
                       <option value="student">Student</option>
                       <option value="instructor">Instructor</option>
                       <option value="admin">Admin</option>
                     </select>
                     {roleChanging[user.id] && (
-                      <span className="ml-2 text-xs text-orange-500 animate-pulse">Saving...</span>
+                      <span className="text-xs text-orange-500 animate-pulse">Saving...</span>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 text-xs">
-                    {user.lastSignIn ? new Date(user.lastSignIn).toLocaleString() : 'Never'}
-                  </td>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Desktop: Table Layout ── */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
+                <tr>
+                  <th className="px-6 py-4 font-medium">User</th>
+                  <th className="px-6 py-4 font-medium">Current Role</th>
+                  <th className="px-6 py-4 font-medium">Change Role</th>
+                  <th className="px-6 py-4 font-medium">Last Sign In</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {users.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
+                          {(user.username || user.email || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{user.username || '—'}</p>
+                          <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${roleBadge(user.role)}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <select
+                        value={user.role}
+                        disabled={roleChanging[user.id]}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-orange-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="student">Student</option>
+                        <option value="instructor">Instructor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      {roleChanging[user.id] && (
+                        <span className="ml-2 text-xs text-orange-500 animate-pulse">Saving...</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-gray-500 text-xs">
+                      {user.lastSignIn ? new Date(user.lastSignIn).toLocaleString() : 'Never'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -316,8 +357,43 @@ export default function AdminDashboard() {
 
   const CourseManagement = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">Course Moderation</h2>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Course Moderation</h2>
+
+      {/* ── Mobile: Card Layout ── */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {[
+          { title: "Advanced TypeScript Patterns", instructor: "John Doe", status: "Pending" },
+          { title: "Docker for Beginners", instructor: "Jane Smith", status: "Published" },
+          { title: "Low Quality Course", instructor: "Spam User", status: "Hidden" },
+        ].map((course, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm leading-snug">{course.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{course.instructor}</p>
+              </div>
+              <span className={`shrink-0 px-2 py-1 rounded-full text-xs font-bold ${
+                course.status === "Published" ? "bg-green-100 text-green-700" :
+                course.status === "Pending" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
+              }`}>{course.status}</span>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-50">
+              {course.status === "Pending" && (
+                <>
+                  <button className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold hover:bg-green-100 transition">Approve</button>
+                  <button className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100 transition">Reject</button>
+                </>
+              )}
+              <button className="p-1.5 text-gray-400 hover:text-blue-500 transition" title="Feature"><Star className="w-4 h-4" /></button>
+              <button className="p-1.5 text-gray-400 hover:text-gray-700 transition" title="Hide"><EyeOff className="w-4 h-4" /></button>
+              <button className="p-1.5 text-gray-400 hover:text-red-500 transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Desktop: Table Layout ── */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
             <tr>
@@ -338,7 +414,7 @@ export default function AdminDashboard() {
                 <td className="px-6 py-4 text-gray-600">{course.instructor}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                    course.status === "Published" ? "bg-green-100 text-green-700" : 
+                    course.status === "Published" ? "bg-green-100 text-green-700" :
                     course.status === "Pending" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
                   }`}>{course.status}</span>
                 </td>
@@ -566,46 +642,73 @@ export default function AdminDashboard() {
                 <button onClick={() => setSubTab('create')} className="text-orange-500 text-sm font-medium hover:underline">Write your first post →</button>
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Post Details</th>
-                    <th className="px-6 py-4 font-medium">Author</th>
-                    <th className="px-6 py-4 font-medium">Category</th>
-                    <th className="px-6 py-4 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+              <>
+                {/* ── Mobile: Card Layout ── */}
+                <div className="flex flex-col divide-y divide-gray-50 md:hidden">
                   {blogs.map((blog) => (
-                    <tr key={blog.id} className="hover:bg-gray-50 transition">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          {blog.image ? (
-                            <img src={blog.image} alt={blog.title} className="w-12 h-9 rounded object-cover shrink-0" />
-                          ) : (
-                            <div className="w-12 h-9 bg-gray-100 rounded flex items-center justify-center shrink-0"><FolderOpen className="w-4 h-4 text-gray-400" /></div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-medium text-gray-900 truncate max-w-md">{blog.title}</p>
-                            <p className="text-xs text-gray-400">{blog.date}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 font-medium">{blog.author}</td>
-                      <td className="px-6 py-4 text-gray-600">{blog.category}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleBlogDelete(blog.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition" 
-                          title="Delete Post"
-                        >
-                          <Trash2 className="w-4.5 h-4.5" />
-                        </button>
-                      </td>
-                    </tr>
+                    <div key={blog.id} className="flex items-center gap-3 p-4">
+                      {blog.image ? (
+                        <img src={blog.image} alt={blog.title} className="w-14 h-10 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <div className="w-14 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0"><FolderOpen className="w-4 h-4 text-gray-400" /></div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm line-clamp-1">{blog.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{blog.author} · {blog.category}</p>
+                      </div>
+                      <button
+                        onClick={() => handleBlogDelete(blog.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition shrink-0"
+                        title="Delete Post"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                {/* ── Desktop: Table Layout ── */}
+                <table className="hidden md:table w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
+                    <tr>
+                      <th className="px-6 py-4 font-medium">Post Details</th>
+                      <th className="px-6 py-4 font-medium">Author</th>
+                      <th className="px-6 py-4 font-medium">Category</th>
+                      <th className="px-6 py-4 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {blogs.map((blog) => (
+                      <tr key={blog.id} className="hover:bg-gray-50 transition">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {blog.image ? (
+                              <img src={blog.image} alt={blog.title} className="w-12 h-9 rounded object-cover shrink-0" />
+                            ) : (
+                              <div className="w-12 h-9 bg-gray-100 rounded flex items-center justify-center shrink-0"><FolderOpen className="w-4 h-4 text-gray-400" /></div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 truncate max-w-md">{blog.title}</p>
+                              <p className="text-xs text-gray-400">{blog.date}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 font-medium">{blog.author}</td>
+                        <td className="px-6 py-4 text-gray-600">{blog.category}</td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleBlogDelete(blog.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                            title="Delete Post"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </div>
         ) : (

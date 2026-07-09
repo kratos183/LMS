@@ -16,6 +16,7 @@ jobs:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
+          command_timeout: 20m 
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
@@ -34,4 +35,4 @@ jobs:
             cp -r public .next/standalone/public
             
             pm2 restart edupress-lms
-            echo "✅ Deployment Successful!" 
+            echo "✅ Deployment Successful!"

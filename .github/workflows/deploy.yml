@@ -3,7 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches:
-      - main
+      - Main
 
 jobs:
   deploy:
@@ -26,7 +26,7 @@ jobs:
             echo "🚀 Starting Deployment..."
             cd /home/ec2-user/LMS
             
-            git pull origin main
+            git pull origin Main
             npm install
             npm run build
             

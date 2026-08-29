@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard, BookOpen, PlayCircle, BarChart3, Heart,
   Award, Star, Bell, CreditCard, User, Settings, MessageSquare,
   FileText, Bot, LogOut, Download, Share2, CheckCircle,
-  Search, Menu, Moon, Sun, Globe, Mail, Trash2, Edit3, Send
+  Search, Menu, Moon, Sun, Globe, Mail, Trash2, Edit3, Send,
+  Loader2, Sparkles, RotateCcw
 } from "lucide-react";
 import Navbar from "../component/navbar";
 
@@ -22,25 +23,6 @@ export default function StudentDashboard() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/';
-  };
-
-  // AI Chat State
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
-    { role: "ai", text: "Hello Ethan! I'm your course AI assistant. Ask me anything about React Context." }
-  ]);
-  const [inputMessage, setInputMessage] = useState("");
-
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
-    const newHistory: ChatMessage[] = [...chatHistory, { role: "user", text: inputMessage }];
-    setChatHistory(newHistory);
-    setInputMessage("");
-    setTimeout(() => {
-      setChatHistory(prev => [...prev, {
-        role: "ai",
-        text: "Based on Module 4 of your React Masterclass: React Context provides a way to pass data through the component tree without having to pass props down manually at every level."
-      }]);
-    }, 800);
   };
 
   const navItems = [
@@ -511,50 +493,7 @@ export default function StudentDashboard() {
     </div>
   );
 
-  const AIAssistant = () => (
-    <div className="h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
-        <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white">
-          <Bot className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="font-bold text-gray-900 text-sm">Course AI Assistant</h3>
-          <p className="text-[10px] text-gray-500">Answers based only on your enrolled courses</p>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
-        {chatHistory.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-              msg.role === "user"
-                ? "bg-orange-500 text-white rounded-br-none"
-                : "bg-gray-100 text-gray-800 rounded-bl-none"
-            }`}>
-              {msg.text}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="p-4 border-t border-gray-100 bg-white">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-            placeholder="Ask about React Context..."
-            className="flex-1 border border-gray-300 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition"
-          />
-          <button
-            onClick={handleSendMessage}
-            className="w-10 h-10 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition shrink-0"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+
 
   /* -------------------------------------------------------------------------- */
   /*                                MAIN RENDER                                 */
@@ -654,6 +593,223 @@ export default function StudentDashboard() {
           </main>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                     STANDALONE AI ASSISTANT COMPONENT                     */
+/* -------------------------------------------------------------------------- */
+function AIAssistant() {
+  const initialChat: ChatMessage[] = [
+    { role: "ai", text: "Hello! 👋 I'm your AI Learning Assistant powered by Groq. You can ask me anything about programming, courses, or just have a casual friendly chat. How can I help you today?" }
+  ];
+
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>(initialChat);
+  const [inputMessage, setInputMessage] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isAiLoading]);
+
+  const handleSendMessage = async (customMsg?: string) => {
+    const textToSend = (customMsg || inputMessage).trim();
+    if (!textToSend || isAiLoading) return;
+
+    const newHistory: ChatMessage[] = [...chatHistory, { role: "user", text: textToSend }];
+    setChatHistory(newHistory);
+    setInputMessage("");
+    setIsAiLoading(true);
+
+    try {
+      const studentContext = {
+        name: "Ethan Hunt",
+        email: "ethan@example.com",
+        enrolledSince: "January 2024",
+        totalSpent: "₹3,297",
+        courses: [
+          {
+            title: "React Masterclass",
+            progress: "75%",
+            completedLessons: 12,
+            totalLessons: 16,
+            remainingLessons: 4,
+            instructor: "John Doe",
+            status: "In Progress",
+            certificateEarned: false,
+          },
+          {
+            title: "Next.js Fundamentals",
+            progress: "100%",
+            completedLessons: 20,
+            totalLessons: 20,
+            remainingLessons: 0,
+            instructor: "Jane Smith",
+            status: "Completed",
+            certificateEarned: true,
+          },
+          {
+            title: "Python Data Science",
+            progress: "30%",
+            completedLessons: 6,
+            totalLessons: 20,
+            remainingLessons: 14,
+            instructor: "Alex Rivera",
+            status: "In Progress",
+            certificateEarned: false,
+          },
+        ],
+        purchases: [
+          { course: "React Masterclass", price: "₹999", date: "Jan 15, 2024", invoiceId: "INV-2024-001" },
+          { course: "Next.js Fundamentals", price: "₹1,499", date: "Jan 28, 2024", invoiceId: "INV-2024-002" },
+          { course: "Python Data Science", price: "₹799", date: "Feb 02, 2024", invoiceId: "INV-2024-003" },
+        ],
+      };
+
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newHistory, studentContext }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setChatHistory(prev => [...prev, {
+          role: "ai",
+          text: `⚠️ ${data.error}`
+        }]);
+      } else {
+        setChatHistory(prev => [...prev, {
+          role: "ai",
+          text: data.reply || "I didn't receive a response. Please try again!"
+        }]);
+      }
+    } catch {
+      setChatHistory(prev => [...prev, {
+        role: "ai",
+        text: "⚠️ Connection error. Please check your internet or try again."
+      }]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const quickPrompts = [
+    "💰 How much money have I spent on courses?",
+    "🏆 When will I get my React Masterclass certificate?",
+    "📚 What courses am I currently enrolled in?",
+    "📬 How do I contact platform support?",
+    "💡 Explain React Hooks simply",
+  ];
+
+  return (
+    <div className="h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-gradient-to-tr from-orange-500 to-amber-500 rounded-xl flex items-center justify-center text-white shadow-sm shadow-orange-200">
+            <Bot className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-gray-900 text-sm">AI Learning Assistant</h3>
+              <span className="bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Groq AI Fast
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500">Ask questions, discuss topics, or have casual friendly talks</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setChatHistory(initialChat)}
+          title="Reset Chat"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition border border-gray-200 hover:border-orange-200"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Clear</span>
+        </button>
+      </div>
+
+      {/* Message Thread */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
+        {chatHistory.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-2.5`}>
+            {msg.role === "ai" && (
+              <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Bot className="w-4 h-4" />
+              </div>
+            )}
+            <div
+              className={`max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                msg.role === "user"
+                  ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-br-sm shadow-sm"
+                  : "bg-white text-gray-800 border border-gray-100 rounded-tl-sm shadow-xs"
+              }`}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+
+        {/* Typing Indicator */}
+        {isAiLoading && (
+          <div className="flex justify-start gap-2.5 items-center">
+            <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="bg-white border border-gray-100 px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm text-gray-500 flex items-center gap-2 shadow-xs">
+              <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
+              <span className="text-xs">AI is thinking...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Quick Suggestion Prompts */}
+      {chatHistory.length <= 2 && !isAiLoading && (
+        <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto custom-scrollbar">
+          <span className="text-[11px] text-gray-400 font-medium shrink-0">Try asking:</span>
+          {quickPrompts.map((prompt, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSendMessage(prompt)}
+              className="shrink-0 text-xs bg-gray-50 hover:bg-orange-50 hover:text-orange-600 text-gray-600 px-3 py-1.5 rounded-full border border-gray-200 hover:border-orange-200 transition"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input Bar */}
+      <div className="p-3 sm:p-4 border-t border-gray-100 bg-white">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+          className="flex gap-2"
+        >
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            placeholder={isAiLoading ? "Waiting for AI..." : "Type your message or ask a question..."}
+            disabled={isAiLoading}
+            className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition disabled:bg-gray-50"
+          />
+          <button
+            type="submit"
+            disabled={!inputMessage.trim() || isAiLoading}
+            className="px-4 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-orange-200"
+          >
+            {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { getOrSetCache, invalidateCache } from '@/lib/redis';
 
 // Helper to choose the right client (anonymous vs admin service-role)
 function getSupabaseClient(useAdmin = false) {
@@ -14,16 +15,33 @@ function getSupabaseClient(useAdmin = false) {
   });
 }
 
-// GET /api/blogs — Fetch all blog posts
+// GET /api/blogs — Fetch all blog posts using Redis Cache-Aside Pattern (TTL: 3600 seconds)
 export async function GET() {
-  const db = getSupabaseClient(false);
-  const { data, error } = await db
-    .from('blogs')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const cacheKey = 'blogs:all:feed';
+    const { data, source } = await getOrSetCache(cacheKey, 3600, async () => {
+      const db = getSupabaseClient(false);
+      const { data: blogs, error } = await db
+        .from('blogs')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ blogs: data });
+      if (error) throw new Error(error.message);
+      return blogs;
+    });
+
+    return NextResponse.json(
+      { blogs: data, source },
+      {
+        headers: {
+          'X-Cache': source === 'cache' ? 'HIT' : 'MISS',
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=59',
+        },
+      }
+    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 
 // POST /api/blogs — Create a new blog post (admin only)
@@ -49,7 +67,7 @@ export async function POST(request: NextRequest) {
       category: category || 'General',
       excerpt: excerpt || '',
       image: image || '',
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), // e.g. "Jul 5, 2026"
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       content: content || [],
       tags: tags || [],
       comments: [],
@@ -57,6 +75,10 @@ export async function POST(request: NextRequest) {
     }]).select().single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cache Invalidation: Purge blog feed cache
+    await invalidateCache('blogs:all:feed');
+
     return NextResponse.json({ success: true, blog: data });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -79,6 +101,10 @@ export async function DELETE(request: NextRequest) {
     const { error } = await db.from('blogs').delete().eq('id', id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cache Invalidation: Purge blog feed cache & individual post cache
+    await invalidateCache('blogs:all:feed', `blog:${id}`);
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

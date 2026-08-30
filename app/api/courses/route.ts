@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { getOrSetCache, invalidateCache } from '@/lib/redis';
 
 // Helper to choose the right client (anonymous vs admin service-role)
 function getSupabaseClient(useAdmin = false) {
@@ -19,24 +20,47 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const mine = searchParams.get('mine'); 
 
-  // Read operations use the standard public client
-  const db = getSupabaseClient(false);
-
-  let query = db.from('courses').select('*').order('created_at', { ascending: false });
-
+  // If instructor requesting private "mine" courses, query DB directly (authenticated)
   if (mine === 'true') {
     const cookieStore = await cookies();
     const role = cookieStore.get('user_role')?.value;
     if (role !== 'instructor' && role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  } else {
-    query = query.eq('status', 'published');
+
+    const db = getSupabaseClient(false);
+    const { data, error } = await db.from('courses').select('*').order('created_at', { ascending: false });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ courses: data }, { headers: { 'X-Cache': 'BYPASS' } });
   }
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ courses: data });
+  // Public Course Catalog — Cache-Aside Pattern with Redis (TTL: 3600 seconds = 1 hour)
+  try {
+    const cacheKey = 'courses:published:catalog';
+    const { data, source } = await getOrSetCache(cacheKey, 3600, async () => {
+      const db = getSupabaseClient(false);
+      const { data: courses, error } = await db
+        .from('courses')
+        .select('*')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+
+      if (error) throw new Error(error.message);
+      return courses;
+    });
+
+    return NextResponse.json(
+      { courses: data, source },
+      {
+        headers: {
+          'X-Cache': source === 'cache' ? 'HIT' : 'MISS',
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=59',
+        },
+      }
+    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 
 // POST /api/courses — create a new course (instructor only)
@@ -81,6 +105,10 @@ export async function POST(request: NextRequest) {
     }]).select().single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cache Invalidation: Purge stale course catalog cache
+    await invalidateCache('courses:published:catalog');
+
     return NextResponse.json({ success: true, course: data });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -103,6 +131,10 @@ export async function PATCH(request: NextRequest) {
     const db = getSupabaseClient(true);
     const { data, error } = await db.from('courses').update(updates).eq('id', id).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cache Invalidation: Purge stale catalog and course caches
+    await invalidateCache('courses:published:catalog', `course:${id}`);
+
     return NextResponse.json({ success: true, course: data });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -122,6 +154,10 @@ export async function DELETE(request: NextRequest) {
     const db = getSupabaseClient(true);
     const { error } = await db.from('courses').delete().eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cache Invalidation: Purge stale catalog and course caches
+    await invalidateCache('courses:published:catalog', `course:${id}`);
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

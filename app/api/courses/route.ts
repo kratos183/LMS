@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getOrSetCache, invalidateCache } from '@/lib/redis';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Helper to choose the right client (anonymous vs admin service-role)
 function getSupabaseClient(useAdmin = false) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -54,7 +57,7 @@ export async function GET(request: NextRequest) {
       {
         headers: {
           'X-Cache': source === 'cache' ? 'HIT' : 'MISS',
-          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=59',
+          'Cache-Control': 'no-store, max-age=0',
         },
       }
     );

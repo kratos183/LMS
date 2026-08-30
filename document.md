@@ -713,13 +713,189 @@ ORDER BY tablename, indexname;
 
 ---
 
-### 📋 Complete Step-by-Step Redis Setup on AWS EC2
+### 💻 Code Changes Made in the Project
+
+#### 1. Redis Client Utility Module: [`lib/redis.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/lib/redis.ts)
+
+```typescript
+import Redis from 'ioredis';
+
+// Global singleton instance for Next.js Node runtime
+declare global {
+  // eslint-disable-next-line no-var
+  var _redisInstance: Redis | undefined;
+}
+
+/**
+ * Returns a singleton Redis client connected to REDIS_URL or local Redis.
+ */
+export function getRedisClient(): Redis | null {
+  if (global._redisInstance) {
+    return global._redisInstance;
+  }
+
+  const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+
+  try {
+    const client = new Redis(redisUrl, {
+      maxRetriesPerRequest: 2,
+      connectTimeout: 5000,
+      enableOfflineQueue: true,
+      retryStrategy(times) {
+        if (times > 3) return null; // stop retrying after 3 failed attempts
+        return Math.min(times * 200, 1000);
+      },
+    });
+
+    client.on('connect', () => {
+      console.log('[Redis] Successfully connected to Redis server at', redisUrl);
+    });
+
+    client.on('error', (err) => {
+      console.warn('[Redis] Connection error:', err.message);
+    });
+
+    global._redisInstance = client;
+    return client;
+  } catch (error) {
+    console.warn('[Redis] Initialization failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Cache-Aside Pattern:
+ * 1. Checks Redis cache.
+ * 2. If HIT -> returns cached object.
+ * 3. If MISS -> executes fetcher(), caches result with TTL, returns data.
+ */
+export async function getOrSetCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<{ data: T; source: 'cache' | 'database' }> {
+  const redis = getRedisClient();
+
+  if (redis) {
+    try {
+      const cached = await redis.get(key);
+      if (cached) {
+        console.log(`[Redis CACHE HIT] Key: "${key}"`);
+        return { data: JSON.parse(cached) as T, source: 'cache' };
+      }
+    } catch (err: any) {
+      console.warn(`[Redis] Error getting key "${key}":`, err.message);
+    }
+  }
+
+  // Cache MISS -> fetch fresh data from database
+  console.log(`[Redis CACHE MISS] Fetching from database for key: "${key}"`);
+  const freshData = await fetcher();
+
+  if (redis && freshData !== undefined && freshData !== null) {
+    try {
+      await redis.setex(key, ttlSeconds, JSON.stringify(freshData));
+      console.log(`[Redis CACHE SET] Saved key: "${key}" (TTL: ${ttlSeconds}s)`);
+    } catch (err: any) {
+      console.warn(`[Redis] Error setting key "${key}":`, err.message);
+    }
+  }
+
+  return { data: freshData, source: 'database' };
+}
+
+/**
+ * Invalidate one or more cache keys on write operations
+ */
+export async function invalidateCache(...keys: string[]): Promise<void> {
+  const redis = getRedisClient();
+  if (!redis || keys.length === 0) return;
+
+  try {
+    const deletedCount = await redis.del(...keys);
+    console.log(`[Redis INVALIDATE] Evicted ${deletedCount} keys:`, keys);
+  } catch (err: any) {
+    console.warn('[Redis] Failed to invalidate keys:', keys, err.message);
+  }
+}
+```
+
+---
+
+#### 2. Courses API with Caching: [`app/api/courses/route.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/app/api/courses/route.ts)
+
+```typescript
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { getOrSetCache, invalidateCache } from '@/lib/redis';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// GET /api/courses — Public catalog uses Redis Cache-Aside
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const mine = searchParams.get('mine'); 
+
+  if (mine === 'true') {
+    // Authenticated instructor requests bypass cache
+    ...
+  }
+
+  // Public Course Catalog — Cache-Aside Pattern with Redis (TTL: 3600 seconds = 1 hour)
+  try {
+    const cacheKey = 'courses:published:catalog';
+    const { data, source } = await getOrSetCache(cacheKey, 3600, async () => {
+      const db = getSupabaseClient(false);
+      const { data: courses, error } = await db
+        .from('courses')
+        .select('*')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+
+      if (error) throw new Error(error.message);
+      return courses;
+    });
+
+    return NextResponse.json(
+      { courses: data, source },
+      {
+        headers: {
+          'X-Cache': source === 'cache' ? 'HIT' : 'MISS',
+          'Cache-Control': 'no-store, max-age=0',
+        },
+      }
+    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// Invalidate on mutations (POST, PATCH, DELETE):
+// await invalidateCache('courses:published:catalog');
+```
+
+---
+
+### 📋 Complete Step-by-Step Deployment & Verification Guide
+
+---
+
+> [!IMPORTANT]
+> **CRITICAL FIRST STEP:** Always push your code from your local machine to GitHub **before** pulling on EC2!
+> ```bash
+> # In local terminal (VS Code):
+> git add .
+> git commit -m "feat: add Redis caching (Cache-Aside pattern)"
+> git push origin Main
+> ```
 
 ---
 
 ### Step 1: Install & Start Redis Server on Amazon Linux 2023
 
-Run these commands in your EC2 terminal:
+Run these commands in your **EC2 Terminal**:
 
 ```bash
 # 1. Install Redis 6 on Amazon Linux 2023
@@ -728,38 +904,80 @@ sudo dnf install -y redis6
 # 2. Enable Redis service and start it immediately
 sudo systemctl enable --now redis6
 
-# 3. Test Redis connection via CLI
+# 3. Create a symlink so `redis-cli` works alongside `redis6-cli`
+sudo ln -sf /usr/bin/redis6-cli /usr/bin/redis-cli
+
+# 4. Test Redis connection via CLI
 redis-cli ping
 ```
 *Expected Output:* `PONG`
 
 ---
 
-### Step 2: Push Code Changes to GitHub & Pull on EC2
+### Step 2: Update Nginx to Support `localhost` and Domain Traffic
 
-On your local machine, the Redis caching module [`lib/redis.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/lib/redis.ts), [`app/api/courses/route.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/app/api/courses/route.ts), and [`app/api/blogs/route.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/app/api/blogs/route.ts) have been created and configured.
+Ensure `/etc/nginx/conf.d/gateway.conf` allows routing for both `localhost` and `learnportal.duckdns.org`:
 
-In your EC2 terminal:
+```bash
+sudo tee /etc/nginx/conf.d/gateway.conf << 'EOF'
+server {
+    listen 80;
+    server_name learnportal.duckdns.org localhost _;
+
+    # Route 1: API Gateway -> AI Microservice (Port 5000)
+    location /api/ai {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Route 2: Default Root -> Next.js Frontend (Port 3000)
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+### Step 3: Pull Latest Code on EC2 & Rebuild Next.js
+
+In your **EC2 Terminal**:
 
 ```bash
 cd ~/LMS
 
-# 1. Pull latest code with Redis integration
+# 1. Reset local files and cleanly pull latest code from GitHub
+git reset --hard origin/Main
 git pull origin Main
 
-# 2. Install dependencies (ioredis)
+# 2. Install dependencies (ioredis) & build
 npm install
-
-# 3. Rebuild Next.js application
 npm run build
 
-# 4. Restart Next.js in PM2
+# 3. Clean restart Next.js in PM2
 pm2 restart nextjs-frontend
 ```
 
 ---
 
-### 🔍 Verification & Testing Caching Performance
+### 🔍 Step 4: Verification & Testing Caching Performance
 
 #### 1. Test Course Catalog Cache (HIT vs MISS):
 
@@ -772,7 +990,7 @@ curl -i http://localhost/api/courses
 *Look at the header in output:*
 ```text
 HTTP/1.1 200 OK
-X-Cache: MISS
+x-cache: MISS
 ...
 {"courses":[...],"source":"database"}
 ```
@@ -784,36 +1002,29 @@ curl -i http://localhost/api/courses
 *Look at the header in output:*
 ```text
 HTTP/1.1 200 OK
-X-Cache: HIT
+x-cache: HIT
 ...
 {"courses":[...],"source":"cache"}
 ```
 
 ---
 
-#### 2. Test Blog Posts Cache (HIT vs MISS):
-
-```bash
-# Request 1: Cache MISS
-curl -i http://localhost/api/blogs
-
-# Request 2: Cache HIT
-curl -i http://localhost/api/blogs
-```
-
----
-
-#### 3. Inspect Cached Keys Directly in Redis:
+#### 2. Inspect Cached Keys Directly in Redis:
 
 Run `redis-cli` in your terminal to see the keys stored in memory:
 
 ```bash
-# List all active cache keys
+# List all active cache keys in memory
 redis-cli KEYS "*"
-
-# Check TTL (Time To Live in seconds) remaining on the course catalog key
-redis-cli TTL "courses:published:catalog"
 
 # Inspect the cached JSON string in Redis
 redis-cli GET "courses:published:catalog"
+
+# Check remaining TTL (Time-To-Live in seconds)
+redis-cli TTL "courses:published:catalog"
 ```
+*Output:*
+```text
+1) "courses:published:catalog"
+```
+

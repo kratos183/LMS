@@ -1172,14 +1172,51 @@ pm2 restart nextjs-frontend
 
 ---
 
-### 🔍 Step 2: Verification & Latency Benchmarking
+### Step 2: Configure Nginx Gateway for the Full Next.js AI Assistant
 
-#### 1. Test Next.js AI Assistant Latency via Port 3000 (CLI):
-
-Since Nginx routes `/api/ai` to Port 5000 (the microservice gateway) and `/` to Port 3000 (Next.js App), test the Next.js full AI Assistant directly on **Port 3000**:
+In **Step 1**, Nginx was routing `/api/ai` to the mock Express microservice on Port 5000.  
+To enable the **Full Groq AI Assistant with RAG Student Records & Live Latency Badges** in your browser dashboard, update Nginx to route traffic to Next.js on Port 3000:
 
 ```bash
-# Request 1 (CACHE MISS -> Hits Groq LLM API ~1,200ms)
+# 1. Update Nginx configuration to point to Next.js on Port 3000
+sudo tee /etc/nginx/conf.d/gateway.conf << 'EOF'
+server {
+    listen 80;
+    server_name learnportal.duckdns.org localhost _;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 2. Re-apply SSL with Certbot
+sudo certbot --nginx -d learnportal.duckdns.org --reinstall
+
+# 3. Reload Nginx
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+### 🔍 Step 3: Verification & Latency Benchmarking (Two Ways to Test)
+
+---
+
+#### 🧪 Way 1: Test Latency Directly from the EC2 Terminal (CLI)
+
+Run an AI query with latency measurement using `curl` against the Next.js Port 3000 server:
+
+```bash
+# Request 1 (CACHE MISS -> Calls Groq LLM API ~1,200ms)
 curl -i -X POST http://127.0.0.1:3000/api/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","text":"How much money have I spent on courses?"}],"studentContext":{"email":"ethan@example.com","totalSpent":"₹3,297"}}'
@@ -1187,8 +1224,8 @@ curl -i -X POST http://127.0.0.1:3000/api/ai/chat \
 *Response Headers & Payload:*
 ```text
 HTTP/1.1 200 OK
-X-Cache: MISS
-X-Response-Time: 1240ms
+x-cache: MISS
+x-response-time: 1240ms
 ...
 {"reply":"...","source":"llm","latencyMs":1240}
 ```
@@ -1202,26 +1239,30 @@ curl -i -X POST http://127.0.0.1:3000/api/ai/chat \
 *Response Headers & Payload:*
 ```text
 HTTP/1.1 200 OK
-X-Cache: HIT
-X-Response-Time: 4ms
+x-cache: HIT
+x-response-time: 4ms
 ...
 {"reply":"...","source":"cache","latencyMs":4}
 ```
 
 ---
 
-#### 2. Live Latency Measurement in the Browser UI:
+#### 🖥️ Way 2: Test Interactively in the Browser Student Dashboard
 
 1. Open **`https://learnportal.duckdns.org/Student-Dashboard`** in your web browser.
 2. Click the **AI Assistant** tab in the sidebar.
 3. Click the suggestion chip: **"💰 How much money have I spent on courses?"**
-   - **First Response:** Displays latency badge `⏱️ ~1,200ms (Groq LLM)`.
-4. Ask the exact same question again:
-   - **Second Response:** Instantly displays latency badge `⚡ ~4ms (Redis Cache HIT)`!
+   - **First Response (Cache MISS):** AI queries Groq LLM and displays the answer along with the badge:  
+     `⏱️ 1,240ms (Groq LLM)`
+4. Send the exact same question again:
+   - **Second Response (Cache HIT):** Instant reply with the green badge:  
+     `⚡ 4ms (Redis Cache HIT)`! *(A 99.6% drop in response time)*
 
 ---
 
-#### 3. View Live Latency Logs in PM2:
+#### 📊 Live PM2 Latency Stream Logs
+
+To observe real-time latency logs as students interact with the AI assistant:
 
 ```bash
 pm2 logs nextjs-frontend --lines 20
@@ -1231,4 +1272,5 @@ pm2 logs nextjs-frontend --lines 20
 [Latency Benchmark] [CACHE MISS / LLM CALL] Prompt: "How much money have I spent..." | Latency: 1240ms | Model: qwen/qwen3.8-27b
 [Latency Benchmark] [CACHE HIT] Prompt: "How much money have I spent..." | Latency: 4ms | Source: Redis RAM
 ```
+
 

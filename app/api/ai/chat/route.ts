@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getRedisClient } from '@/lib/redis';
+
+export const dynamic = 'force-dynamic';
 
 const CANDIDATE_MODELS = [
   'qwen/qwen3.8-27b',
@@ -7,7 +10,22 @@ const CANDIDATE_MODELS = [
   'qwen/qwen3.6-27b',
 ];
 
+/**
+ * Creates a deterministic cache key based on user email and their prompt
+ */
+function createPromptHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
 export async function POST(req: NextRequest) {
+  const startTime = performance.now();
+
   try {
     const { messages, studentContext } = await req.json();
 
@@ -19,7 +37,50 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Dynamic Student Knowledge Base & Platform Context Injection
+    // Extract latest user prompt
+    const lastUserMessage = [...(messages || [])].reverse().find((m: any) => m.role === 'user');
+    const userPrompt = lastUserMessage?.text?.trim() || '';
+    const studentEmail = studentContext?.email || 'default_student';
+
+    // Generate cache key for prompt
+    const promptKey = `ai:chat:${studentEmail}:${createPromptHash(userPrompt.toLowerCase())}`;
+    const redis = getRedisClient();
+
+    // =========================================================================
+    // 1. REDIS CACHE LOOKUP (Cache-Aside Pattern)
+    // =========================================================================
+    if (redis && userPrompt) {
+      try {
+        const cachedReply = await redis.get(promptKey);
+        if (cachedReply) {
+          const latencyMs = Math.round(performance.now() - startTime);
+          console.log(
+            `\x1b[32m[Latency Benchmark] [CACHE HIT]\x1b[0m Prompt: "${userPrompt.slice(0, 40)}..." | ` +
+            `Latency: \x1b[1m\x1b[32m${latencyMs}ms\x1b[0m | Source: Redis RAM`
+          );
+
+          return NextResponse.json(
+            {
+              reply: cachedReply,
+              source: 'cache',
+              latencyMs,
+            },
+            {
+              headers: {
+                'X-Cache': 'HIT',
+                'X-Response-Time': `${latencyMs}ms`,
+              },
+            }
+          );
+        }
+      } catch (err: any) {
+        console.warn('[Redis] Cache read warning in AI route:', err.message);
+      }
+    }
+
+    // =========================================================================
+    // 2. CACHE MISS -> CALL GROQ LLM API
+    // =========================================================================
     const contextPrompt = `
 You are the official AI Learning Assistant for "EduPress LMS" (Website: EduPress LMS, Support: support@edupress.com, Contact Page: /contactPage, FAQs: /FAQ).
 You are speaking directly with the currently authenticated student. You have real-time access to their personalized student record below.
@@ -116,6 +177,7 @@ ${JSON.stringify(
     ];
 
     let lastError = '';
+    let selectedModel = '';
 
     for (const model of CANDIDATE_MODELS) {
       try {
@@ -141,7 +203,38 @@ ${JSON.stringify(
 
         const reply = data.choices?.[0]?.message?.content;
         if (reply) {
-          return NextResponse.json({ reply });
+          selectedModel = model;
+          const latencyMs = Math.round(performance.now() - startTime);
+
+          // Save response to Redis (TTL: 1800 seconds = 30 minutes)
+          if (redis && userPrompt) {
+            try {
+              await redis.setex(promptKey, 1800, reply);
+            } catch (err: any) {
+              console.warn('[Redis] Failed to cache AI reply:', err.message);
+            }
+          }
+
+          console.log(
+            `\x1b[33m[Latency Benchmark] [CACHE MISS / LLM CALL]\x1b[0m Prompt: "${userPrompt.slice(0, 40)}..." | ` +
+            `Latency: \x1b[1m\x1b[33m${latencyMs}ms\x1b[0m | Model: ${model}`
+          );
+
+          return NextResponse.json(
+            {
+              reply,
+              source: 'llm',
+              latencyMs,
+              model: selectedModel,
+            },
+            {
+              headers: {
+                'X-Cache': 'MISS',
+                'X-Response-Time': `${latencyMs}ms`,
+                'X-Model': selectedModel,
+              },
+            }
+          );
         }
       } catch (err: any) {
         lastError = err.message;
@@ -149,7 +242,7 @@ ${JSON.stringify(
     }
 
     return NextResponse.json(
-      { error: lastError || "Failed to generate AI response from available models." },
+      { error: lastError || 'Failed to generate AI response from available models.' },
       { status: 400 }
     );
   } catch (error: any) {

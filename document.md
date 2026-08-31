@@ -1174,13 +1174,13 @@ pm2 restart nextjs-frontend
 
 ### 🔍 Step 2: Verification & Latency Benchmarking
 
-#### 1. Test Latency via Terminal (CLI):
+#### 1. Test Next.js AI Assistant Latency via Port 3000 (CLI):
 
-Run an AI query with latency measurement using `curl`:
+Since Nginx routes `/api/ai` to Port 5000 (the microservice gateway) and `/` to Port 3000 (Next.js App), test the Next.js full AI Assistant directly on **Port 3000**:
 
 ```bash
-# Request 1 (CACHE MISS -> Hits Groq LLM API)
-curl -i -X POST http://localhost/api/ai/chat \
+# Request 1 (CACHE MISS -> Hits Groq LLM API ~1,200ms)
+curl -i -X POST http://127.0.0.1:3000/api/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","text":"How much money have I spent on courses?"}],"studentContext":{"email":"ethan@example.com","totalSpent":"₹3,297"}}'
 ```
@@ -1195,7 +1195,7 @@ X-Response-Time: 1240ms
 
 ```bash
 # Request 2 (CACHE HIT -> Served from Redis in ~4ms!)
-curl -i -X POST http://localhost/api/ai/chat \
+curl -i -X POST http://127.0.0.1:3000/api/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","text":"How much money have I spent on courses?"}],"studentContext":{"email":"ethan@example.com","totalSpent":"₹3,297"}}'
 ```
@@ -1210,14 +1210,14 @@ X-Response-Time: 4ms
 
 ---
 
-#### 2. Live Latency Measurement in the Browser:
+#### 2. Live Latency Measurement in the Browser UI:
 
-1. Open **`https://learnportal.duckdns.org/Student-Dashboard`** in your browser.
+1. Open **`https://learnportal.duckdns.org/Student-Dashboard`** in your web browser.
 2. Click the **AI Assistant** tab in the sidebar.
-3. Ask: *"How much money have I spent on courses?"*
-   - **First Time:** You will see the badge: `⏱️ 1,180ms (Groq LLM)`.
-4. Ask the same question again:
-   - **Second Time:** Instant reply with the green badge: `⚡ 4ms (Redis Cache HIT)`!
+3. Click the suggestion chip: **"💰 How much money have I spent on courses?"**
+   - **First Response:** Displays latency badge `⏱️ ~1,200ms (Groq LLM)`.
+4. Ask the exact same question again:
+   - **Second Response:** Instantly displays latency badge `⚡ ~4ms (Redis Cache HIT)`!
 
 ---
 
@@ -1231,3 +1231,4 @@ pm2 logs nextjs-frontend --lines 20
 [Latency Benchmark] [CACHE MISS / LLM CALL] Prompt: "How much money have I spent..." | Latency: 1240ms | Model: qwen/qwen3.8-27b
 [Latency Benchmark] [CACHE HIT] Prompt: "How much money have I spent..." | Latency: 4ms | Source: Redis RAM
 ```
+

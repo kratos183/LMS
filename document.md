@@ -1273,4 +1273,163 @@ pm2 logs nextjs-frontend --lines 20
 [Latency Benchmark] [CACHE HIT] Prompt: "How much money have I spent..." | Latency: 4ms | Source: Redis RAM
 ```
 
+---
 
+## 6. Vertical Scaling (Concept #12)
+
+> **Action:** Document how you would upgrade your EC2 instance from `t2.micro` to `t2.small` (more CPU/RAM) when traffic spikes.  
+> **Concept:** Vertical Scaling (Scaling UP) — increasing compute capacity on a single machine versus Horizontal Scaling (Scaling OUT).
+
+---
+
+### 🏛️ System Design Architecture: Vertical vs. Horizontal Scaling
+
+```
+Vertical Scaling (Scaling UP - Concept #12):
+┌────────────────┐          ┌───────────────────────────┐
+│   t2.micro     │   ───►   │         t2.small          │
+│ 1 vCPU, 1G RAM │          │ 1 vCPU, 2G RAM (2x Memory)│
+└────────────────┘          └───────────────────────────┘
+• Simple: Zero code changes or load balancer needed.
+• Fast: Takes under 2 minutes of planned maintenance.
+• Limit: Hard hardware ceiling (e.g. max instance size in AWS).
+
+Horizontal Scaling (Scaling OUT - Concept #13):
+                          ┌────────────────────────┐
+                          │     Load Balancer      │
+                          └───────────┬────────────┘
+                  ┌───────────────────┼───────────────────┐
+                  ▼                   ▼                   ▼
+          ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+          │ EC2 Worker 1 │    │ EC2 Worker 2 │    │ EC2 Worker 3 │
+          └──────────────┘    └──────────────┘    └──────────────┘
+• Infinite scale: Add dozens of instances behind a load balancer.
+• Complexity: Requires stateless architecture, shared Redis/DB, and auto-scaling groups.
+```
+
+---
+
+### 📊 AWS EC2 Instance Specs Comparison
+
+| Instance Type | vCPUs | Memory (RAM) | Baseline Performance | Network Performance | Best Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`t2.micro`** | 1 | 1 GiB | 10% CPU Baseline | Low to Moderate | Dev/Testing, Free Tier |
+| **`t2.small`** | 1 | 2 GiB | 20% CPU Baseline | Low to Moderate | Low-traffic Production, LMS Starter |
+| **`t3.small`** | 2 | 2 GiB | 20% CPU Baseline | Up to 5 Gbps | Modern production tier with 2 CPU cores |
+| **`t3.medium`** | 2 | 4 GiB | 40% CPU Baseline | Up to 5 Gbps | Recommended for Production LMS + Redis |
+
+---
+
+### ⚠️ The Critical Elastic IP Gotcha During Upgrades
+
+> [!WARNING]
+> **AWS Dynamic IP Change Warning:**  
+> When you **Stop** and **Start** a regular EC2 instance without an Elastic IP, AWS releases its old Public IP and assigns a **brand new Public IP address**!  
+> This means your **DuckDNS domain (`learnportal.duckdns.org`)** will temporarily lose its DNS mapping until you update DuckDNS with the new IP (or attach an **AWS Elastic IP**).
+
+---
+
+### 📋 Complete Step-by-Step Upgrade Guide (AWS Console & CLI)
+
+---
+
+### Method A: Upgrade via AWS Web Console (2 Minutes)
+
+#### Step 1: Pre-Upgrade State Check (Inside EC2 Terminal)
+Ensure PM2 and Systemd services are configured to boot automatically when the server turns back on:
+
+```bash
+# 1. Save all active PM2 processes
+pm2 save
+
+# 2. Ensure PM2 starts on system boot
+pm2 startup
+```
+
+---
+
+#### Step 2: Stop the EC2 Instance
+1. Open the **AWS Console > EC2 > Instances**.
+2. Select your instance (`lms-gateway-server`).
+3. Click **Instance state** ▾ in the top right $\to$ **Stop instance**.
+4. Wait 15–30 seconds until the state changes to **Stopped** (Red icon).
+
+---
+
+#### Step 3: Change Instance Type to `t2.small` (or `t3.small` / `t3.medium`)
+1. With the stopped instance selected, click **Actions** ▾.
+2. Select **Instance settings** $\to$ **Change instance type**.
+3. In the dropdown, select **`t2.small`** (or **`t3.small`** / **`t3.medium`**).
+4. Click **Apply**.
+
+---
+
+#### Step 4: Start the Upgraded EC2 Instance
+1. Click **Instance state** ▾ $\to$ **Start instance**.
+2. Wait until the state changes to **Running** (Green icon).
+
+---
+
+#### Step 5: Update DuckDNS with Your New Public IP
+1. Copy the **Public IPv4 address** shown on your new instance in AWS Console.
+2. Open **[duckdns.org/domains](https://www.duckdns.org/domains)**.
+3. Paste the new Public IP into the `learnportal` domain box and click **update ip**.
+
+---
+
+### Method B: Automated Upgrade via AWS CLI
+
+If you have the AWS CLI configured on your local terminal:
+
+```bash
+# 1. Define your Instance ID
+INSTANCE_ID="i-0f776d77aa2ad224b"
+
+# 2. Stop the EC2 instance
+aws ec2 stop-instances --instance-ids $INSTANCE_ID
+
+# 3. Wait until instance is fully stopped
+aws ec2 wait instance-stopped --instance-ids $INSTANCE_ID
+
+# 4. Modify the instance type to t2.small
+aws ec2 modify-instance-attribute \
+    --instance-id $INSTANCE_ID \
+    --instance-type "{\"Value\": \"t2.small\"}"
+
+# 5. Start the upgraded instance
+aws ec2 start-instances --instance-ids $INSTANCE_ID
+```
+
+---
+
+### 🔍 Verification & Resource Inspection Post-Upgrade
+
+Once you SSH or Connect back into your upgraded EC2 instance, verify that your new CPU and RAM resources are active:
+
+```bash
+# 1. Verify Memory (RAM increased from 1GB -> 2GB!)
+free -h
+```
+*Expected Output on `t2.small`:*
+```text
+               total        used        free      shared  buff/cache   available
+Mem:           1.9Gi       450Mi       1.1Gi       1.2Mi       410Mi       1.4Gi
+Swap:          4.0Gi        50Mi       3.9Gi
+```
+
+```bash
+# 2. Verify CPU Cores and Architecture
+lscpu | grep -E "Model name|CPU\(s\):|Thread"
+
+# 3. Check Live System Resource Monitor
+top
+# (or install htop: sudo dnf install -y htop && htop)
+
+# 4. Check that Nginx, Redis, and Next.js are running healthy
+pm2 status
+sudo systemctl status nginx
+sudo systemctl status redis6
+
+# 5. Test Live Domain Health
+curl -I https://learnportal.duckdns.org/
+```

@@ -10,6 +10,7 @@ This guide covers everything you need to know about restarting your AWS EC2 inst
 3. [One-Click Clean Restart Command](#3-one-click-clean-restart-command)
 4. [Automated Permanent DuckDNS IP Assignment](#4-automated-permanent-duckdns-ip-assignment)
 5. [Health Check & Verification Checklist](#5-health-check--verification-checklist)
+6. [How to Connect via Windows SSH Terminal (No .pem Required)](#6-how-to-connect-via-windows-ssh-terminal-no-pem-required)
 
 ---
 
@@ -177,7 +178,58 @@ curl -I https://learnportal.duckdns.org/
 
 ---
 
-### 🌐 Open in Browser:
+## 6. How to Connect via Windows SSH Terminal (No .pem Required)
+
+Instead of relying on the AWS web console browser terminal, you can connect directly from your **Windows Command Prompt (`cmd`)**, **PowerShell**, or **VS Code Terminal** without needing the original AWS `.pem` key file.
+
+---
+
+### Step 1: Check or Generate Your Local SSH Key on Windows
+
+In your **Windows Terminal (`cmd`)**:
+
+```cmd
+# 1. Check if you already have a key
+type C:\Users\CHAND\.ssh\id_ed25519.pub
+# (or type C:\Users\CHAND\.ssh\id_rsa.pub)
+
+# 2. If no key exists, generate a new one (press Enter for all defaults):
+ssh-keygen -t ed25519 -C "chand-laptop"
+```
+
+**Copy the output text** (it starts with `ssh-ed25519 AAAAC3Nza...` or `ssh-rsa AAAAB3Nza...`).
+
+---
+
+### Step 2: Add Your Public Key to EC2 (One-Time Setup)
+
+Open the **AWS 1-Click Browser Terminal** on your instance and run:
+
+```bash
+# Append your Windows laptop public key to authorized_keys
+echo "PASTE_YOUR_COPIED_PUBLIC_KEY_HERE" >> ~/.ssh/authorized_keys
+
+# Ensure secure file permissions
+chmod 600 ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+```
+
+---
+
+### Step 3: Connect Instantly from Windows Terminal! 🚀
+
+Now, anytime you want to access your server, just open **Command Prompt (`cmd`)** or **PowerShell** on your PC and run:
+
+```cmd
+ssh ec2-user@learnportal.duckdns.org
+```
+
+*(You can also use your IP: `ssh ec2-user@51.20.54.184`)*
+
+---
+
+### 🌐 Direct Browser Access Links:
 - **Homepage:** `https://learnportal.duckdns.org/`
 - **Student Dashboard:** `https://learnportal.duckdns.org/Student-Dashboard`
 - **Course Catalog:** `https://learnportal.duckdns.org/courses`
+

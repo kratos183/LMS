@@ -93,36 +93,335 @@ export default function StudentDashboard() {
     </div>
   );
 
+  // Courses State with Asynchronous Queue Support
+  const [coursesList, setCoursesList] = useState([
+    { id: "c101", title: "Full Stack Web Development", progress: 100, instructor: "John Doe", img: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&h=250&fit=crop", claimed: false },
+    { id: "c102", title: "React Masterclass", progress: 78, instructor: "John Doe", img: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=250&fit=crop", claimed: false },
+    { id: "c103", title: "Next.js Fundamentals", progress: 100, instructor: "Jane Smith", img: "https://images.unsplash.com/photo-1555099962-4199c345e5dd?w=400&h=250&fit=crop", claimed: true },
+    { id: "c104", title: "Python Data Science", progress: 100, instructor: "Alex Rivera", img: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&h=250&fit=crop", claimed: true },
+  ]);
+
+  // Certificates State
+  const [certificatesList, setCertificatesList] = useState([
+    { id: "CERT-EDU-NEXTJS-4921", courseTitle: "Next.js Fundamentals", date: "Jan 28, 2024", instructor: "Jane Smith" },
+    { id: "CERT-EDU-PYTHON-8832", courseTitle: "Python Data Science", date: "Feb 02, 2024", instructor: "Alex Rivera" },
+  ]);
+
+  const [completingCourseId, setCompletingCourseId] = useState<string | null>(null);
+  const [queueNotice, setQueueNotice] = useState<{ msg: string; jobId: string; latencyMs: number } | null>(null);
+
+  // High-Resolution Certificate PDF/PNG Generator & Downloader
+  const handleDownloadCertificate = (courseTitle: string, instructorName: string, certId: string, certDate: string) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1400;
+    canvas.height = 950;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // 1. Parchment Ivory Background
+    ctx.fillStyle = "#FDFCF7";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Decorative Outer & Inner Luxury Gold Borders
+    ctx.strokeStyle = "#C5A059";
+    ctx.lineWidth = 14;
+    ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
+
+    ctx.strokeStyle = "#E6CA85";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(45, 45, canvas.width - 90, canvas.height - 90);
+
+    ctx.strokeStyle = "#C5A059";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(55, 55, canvas.width - 110, canvas.height - 110);
+
+    // 3. Header
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8C7137";
+    ctx.font = "bold 22px serif";
+    ctx.fillText("★  E D U P R E S S   A C A D E M Y   O F   T E C H N O L O G Y  ★", canvas.width / 2, 120);
+
+    ctx.fillStyle = "#1E293B";
+    ctx.font = "bold 44px serif";
+    ctx.fillText("CERTIFICATE OF ACHIEVEMENT", canvas.width / 2, 185);
+
+    ctx.strokeStyle = "#C5A059";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2 - 250, 210);
+    ctx.lineTo(canvas.width / 2 + 250, 210);
+    ctx.stroke();
+
+    // 4. Subtitle & Recipient
+    ctx.fillStyle = "#64748B";
+    ctx.font = "italic 20px serif";
+    ctx.fillText("This is officially awarded and presented to", canvas.width / 2, 270);
+
+    ctx.fillStyle = "#EA580C";
+    ctx.font = "bold 56px 'Georgia', serif";
+    ctx.fillText("Ethan Hunt", canvas.width / 2, 350);
+
+    ctx.strokeStyle = "#EA580C";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2 - 200, 375);
+    ctx.lineTo(canvas.width / 2 + 200, 375);
+    ctx.stroke();
+
+    // 5. Completion Description
+    ctx.fillStyle = "#475569";
+    ctx.font = "20px sans-serif";
+    ctx.fillText("for successfully completing all curriculum lectures, practical hands-on labs,", canvas.width / 2, 435);
+    ctx.fillText("and professional milestone projects required for mastery of", canvas.width / 2, 470);
+
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "bold 38px serif";
+    ctx.fillText(courseTitle, canvas.width / 2, 540);
+
+    // 6. Metadata (ID & Date)
+    ctx.fillStyle = "#64748B";
+    ctx.font = "16px monospace";
+    ctx.fillText(`Certificate ID: ${certId}`, canvas.width / 2, 610);
+    ctx.fillText(`Issued: ${certDate}  •  Accredited by EduPress Global LMS`, canvas.width / 2, 638);
+
+    // 7. Gold Seal
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, 740, 52, 0, Math.PI * 2);
+    ctx.fillStyle = "#C5A059";
+    ctx.fill();
+    ctx.strokeStyle = "#E6CA85";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText("★ VERIFIED ★", canvas.width / 2, 735);
+    ctx.fillText("ACCREDITED", canvas.width / 2, 755);
+
+    // 8. Signatures
+    // Left: Instructor
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "italic bold 22px 'Brush Script MT', cursive, serif";
+    ctx.fillText(instructorName, 260, 750);
+    ctx.strokeStyle = "#94A3B8";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(140, 765);
+    ctx.lineTo(380, 765);
+    ctx.stroke();
+    ctx.fillStyle = "#64748B";
+    ctx.font = "14px sans-serif";
+    ctx.fillText(`${instructorName} — Lead Instructor`, 260, 790);
+
+    // Right: Director
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "italic bold 22px 'Brush Script MT', cursive, serif";
+    ctx.fillText("Dr. Sarah Jenkins", canvas.width - 260, 750);
+    ctx.strokeStyle = "#94A3B8";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width - 380, 765);
+    ctx.lineTo(canvas.width - 140, 765);
+    ctx.stroke();
+    ctx.fillStyle = "#64748B";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("Dr. Sarah Jenkins — Academic Director", canvas.width - 260, 790);
+
+    // 9. Trigger Direct PNG/PDF Download
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = `EduPress_Certificate_${courseTitle.replace(/\s+/g, "_")}.png`;
+    link.href = dataUrl;
+    link.click();
+  };
+
+  // Asynchronous Queue Trigger (Concept #27)
+  const handleClaimCertificateAsync = async (course: typeof coursesList[0]) => {
+    setCompletingCourseId(course.id);
+    try {
+      const res = await fetch("/api/courses/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId: course.id,
+          courseTitle: course.title,
+          studentEmail: "ethan@example.com",
+          studentName: "Ethan Hunt",
+          instructorName: course.instructor,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const newCertId = `CERT-EDU-${course.id.toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const newCert = {
+          id: newCertId,
+          courseTitle: course.title,
+          date: "Sep 01, 2026",
+          instructor: course.instructor,
+        };
+
+        // Update local state
+        setCertificatesList(prev => [newCert, ...prev]);
+        setCoursesList(prev => prev.map(c => c.id === course.id ? { ...c, claimed: true } : c));
+
+        setQueueNotice({
+          msg: `🎉 Event published to Message Queue in ${data.latencyMs || 15}ms! Certificate generated & ready.`,
+          jobId: data.jobId,
+          latencyMs: data.latencyMs || 15,
+        });
+
+        setTimeout(() => setQueueNotice(null), 8000);
+      }
+    } catch {
+      alert("Failed to connect to message queue. Please check server status.");
+    } finally {
+      setCompletingCourseId(null);
+    }
+  };
+
   const MyCourses = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">My Courses</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[
-          { title: "React Masterclass", progress: 78, img: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=250&fit=crop" },
-          { title: "Next.js Fundamentals", progress: 35, img: "https://images.unsplash.com/photo-1555099962-4199c345e5dd?w=400&h=250&fit=crop" },
-          { title: "Python for Data Science", progress: 100, img: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&h=250&fit=crop" },
-        ].map((course, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden group">
-            <div className="h-40 overflow-hidden relative">
-              <img src={course.img} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
-                <div className={`h-full ${course.progress === 100 ? "bg-green-500" : "bg-orange-500"}`} style={{ width: `${course.progress}%` }}></div>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">My Courses</h2>
+        <span className="text-xs font-semibold bg-orange-50 text-orange-600 px-3 py-1 rounded-full border border-orange-200">
+          ⚡ Event-Driven Message Queue Active
+        </span>
+      </div>
+
+      {queueNotice && (
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-bold">✓</span>
+            <div>
+              <p className="text-sm font-bold text-emerald-900">{queueNotice.msg}</p>
+              <p className="text-xs text-emerald-700">Job ID: <code className="bg-emerald-100 px-1.5 py-0.5 rounded">{queueNotice.jobId}</code> • Queue Latency: <b>{queueNotice.latencyMs}ms</b></p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab("certificates")}
+            className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition"
+          >
+            View Certificates →
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+        {coursesList.map((course) => (
+          <div key={course.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden group flex flex-col justify-between">
+            <div>
+              <div className="h-44 overflow-hidden relative">
+                <img src={course.img} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-200">
+                  <div className={`h-full ${course.progress === 100 ? "bg-emerald-500" : "bg-orange-500"}`} style={{ width: `${course.progress}%` }}></div>
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-gray-900 text-base">{course.title}</h3>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${course.progress === 100 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                    {course.progress}%
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">Instructor: {course.instructor}</p>
               </div>
             </div>
-            <div className="p-5">
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-bold text-gray-900 line-clamp-1">{course.title}</h3>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${course.progress === 100 ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
-                  {course.progress}%
-                </span>
+
+            <div className="p-5 pt-0">
+              {course.progress === 100 ? (
+                course.claimed ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDownloadCertificate(course.title, course.instructor, `CERT-EDU-${course.id.toUpperCase()}`, "Sep 01, 2026")}
+                      className="flex-1 bg-emerald-600 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-emerald-700 transition flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-200"
+                    >
+                      <Download className="w-4 h-4" /> Download Certificate
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("certificates")}
+                      className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-xs font-medium text-gray-600"
+                    >
+                      View All
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleClaimCertificateAsync(course)}
+                    disabled={completingCourseId === course.id}
+                    className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold py-2.5 rounded-lg transition flex items-center justify-center gap-2 shadow-sm shadow-orange-200 disabled:opacity-50"
+                  >
+                    {completingCourseId === course.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Queuing Event in Redis...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Award className="w-4 h-4" />
+                        <span>Claim Certificate (Async Queue)</span>
+                      </>
+                    )}
+                  </button>
+                )
+              ) : (
+                <div className="flex gap-2">
+                  <button className="flex-1 bg-black text-white text-xs py-2.5 rounded-lg hover:bg-gray-800 transition font-medium">
+                    Continue Learning
+                  </button>
+                  <button className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                    <MessageSquare className="w-4 h-4 text-gray-600" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const Certificates = () => (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">My Certificates</h2>
+          <p className="text-xs text-gray-500 mt-1">Official verified credentials generated by EduPress LMS</p>
+        </div>
+        <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1.5">
+          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> {certificatesList.length} Verified Credentials
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {certificatesList.map((cert, i) => (
+          <div key={i} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+            <div className="flex gap-4 items-start">
+              <div className="w-14 h-14 bg-gradient-to-tr from-amber-500 to-orange-500 rounded-2xl flex items-center justify-center text-white shadow-sm shadow-orange-200 shrink-0">
+                <Award className="w-7 h-7" />
               </div>
-              <div className="flex flex-wrap gap-2 mt-4">
-                <button className="flex-1 bg-black text-white text-xs py-2 rounded hover:bg-gray-800 transition">
-                  {course.progress === 100 ? "View Course" : "Continue"}
-                </button>
-                <button className="px-3 py-2 border border-gray-200 rounded hover:bg-gray-50 transition"><Download className="w-4 h-4 text-gray-600" /></button>
-                <button className="px-3 py-2 border border-gray-200 rounded hover:bg-gray-50 transition"><MessageSquare className="w-4 h-4 text-gray-600" /></button>
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Official Certificate</span>
+                <h3 className="font-bold text-gray-900 text-base truncate mt-0.5">{cert.courseTitle}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Instructor: {cert.instructor} • Issued: {cert.date}</p>
+                <p className="text-[11px] font-mono text-gray-400 mt-1">ID: {cert.id}</p>
               </div>
+            </div>
+
+            <div className="flex gap-2 mt-5 pt-4 border-t border-gray-50">
+              <button
+                onClick={() => handleDownloadCertificate(cert.courseTitle, cert.instructor, cert.id, cert.date)}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm shadow-orange-200 transition"
+              >
+                <Download className="w-3.5 h-3.5" /> Download Certificate
+              </button>
+              <button
+                onClick={() => alert(`Certificate ${cert.id} is officially verified on EduPress LMS Blockchain Registry.`)}
+                className="text-xs flex items-center gap-1 text-gray-600 hover:text-orange-500 px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Verify
+              </button>
             </div>
           </div>
         ))}
@@ -222,30 +521,6 @@ export default function StudentDashboard() {
             <p className="text-sm text-gray-500">Master the fundamentals of {item.split(" ")[0]} with hands-on projects.</p>
             <div className="mt-auto pt-4 border-t border-gray-50 flex gap-2">
               <button className="flex-1 bg-orange-500 text-white py-2 rounded text-sm font-medium hover:bg-orange-600 transition">Enroll Now</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const Certificates = () => (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">My Certificates</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {["React Masterclass", "Python Data Science"].map((cert, i) => (
-          <div key={i} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex gap-4 items-center">
-            <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center text-orange-500 shrink-0">
-              <Award className="w-8 h-8" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-gray-900 truncate">{cert} Certificate</h3>
-              <p className="text-xs text-gray-500 mt-1">Issued on Jan 15, 2024</p>
-              <div className="flex gap-2 mt-3">
-                <button className="text-xs flex items-center gap-1 text-gray-600 hover:text-orange-500 transition"><Download className="w-3 h-3" /> PDF</button>
-                <button className="text-xs flex items-center gap-1 text-gray-600 hover:text-orange-500 transition"><Share2 className="w-3 h-3" /> Share</button>
-                <button className="text-xs flex items-center gap-1 text-gray-600 hover:text-orange-500 transition"><CheckCircle className="w-3 h-3" /> Verify</button>
-              </div>
             </div>
           </div>
         ))}

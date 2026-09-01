@@ -1,0 +1,183 @@
+# 🔄 EC2 Instance Restart & Auto-Recovery Operations Guide
+
+This guide covers everything you need to know about restarting your AWS EC2 instance, starting the LMS web services (Next.js, Redis, Nginx, Background Workers), and automating permanent IP synchronization with DuckDNS.
+
+---
+
+## 📑 Table of Contents
+1. [How to Restart the EC2 Instance](#1-how-to-restart-the-ec2-instance)
+2. [Starting Web Application Services After a Reboot](#2-starting-web-application-services-after-a-reboot)
+3. [One-Click Clean Restart Command](#3-one-click-clean-restart-command)
+4. [Automated Permanent DuckDNS IP Assignment](#4-automated-permanent-duckdns-ip-assignment)
+5. [Health Check & Verification Checklist](#5-health-check--verification-checklist)
+
+---
+
+## 1. How to Restart the EC2 Instance
+
+There are three ways to restart your AWS EC2 instance:
+
+### Method A: Via AWS Web Console (Recommended for Maintenance / Scaling)
+1. Open the **[AWS EC2 Console](https://console.aws.amazon.com/ec2/)**.
+2. Click **Instances** in the left sidebar.
+3. Select your instance (`lms-gateway-server` / `ip-172-31-46-19`).
+4. Click **Instance state** ▾ in the top right:
+   - Choose **Reboot instance** (Soft reboot without releasing IP).
+   - Or choose **Stop instance** ➔ wait 30 seconds until *Stopped* ➔ click **Start instance** (Hard restart / resizing).
+
+---
+
+### Method B: Via Terminal / SSH (Fast Soft Reboot)
+Inside your EC2 SSH terminal, run:
+```bash
+sudo reboot
+```
+*(The terminal will disconnect. Wait 30–45 seconds, then reconnect via SSH).*
+
+---
+
+### Method C: Via AWS CLI
+```bash
+# Soft reboot
+aws ec2 reboot-instances --instance-ids YOUR_INSTANCE_ID
+
+# Hard stop and start
+aws ec2 stop-instances --instance-ids YOUR_INSTANCE_ID
+aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID
+```
+
+---
+
+## 2. Starting Web Application Services After a Reboot
+
+When the EC2 instance turns back on, ensure the following core services are active:
+
+### 1. Redis 6 (In-Memory Cache & Message Streams)
+```bash
+sudo systemctl start redis6
+sudo systemctl enable redis6
+```
+
+### 2. Nginx Web Server (Reverse Proxy & SSL Port 443)
+```bash
+sudo systemctl start nginx
+sudo systemctl enable nginx
+```
+
+### 3. Next.js Frontend & TypeScript Background Worker (PM2)
+```bash
+cd ~/LMS
+
+# Restore all saved PM2 background processes
+pm2 resurrect
+```
+
+---
+
+## 3. One-Click Clean Restart Command
+
+If you ever want to cleanly rebuild and restart all services in one go, run this single block in your **EC2 Terminal**:
+
+```bash
+cd ~/LMS
+
+# 1. Start system services
+sudo systemctl start redis6
+sudo systemctl start nginx
+
+# 2. Reset PM2 and start Next.js + Certificate Worker cleanly
+pm2 delete all
+pm2 start npm --name "nextjs-frontend" -- start -- -p 3000
+pm2 start npm --name "certificate-worker" -- run worker
+
+# 3. Save process list so it survives future reboots
+pm2 save
+
+# 4. Check status
+pm2 status
+```
+
+---
+
+## 4. Automated Permanent DuckDNS IP Assignment
+
+### 🧠 Why did the IP change before?
+When AWS EC2 instances are stopped and started without a static Elastic IP, AWS re-allocates a dynamic Public IPv4 address. 
+
+To permanently automate this so you **never have to manually update DuckDNS again**, we configured an automated cron daemon that detects IP changes on boot and syncs with DuckDNS every 5 minutes.
+
+---
+
+### ⚙️ Complete Setup & Recovery Script for Auto IP Sync
+
+If you ever need to reconfigure this on a new server, run:
+
+```bash
+# 1. Install cron daemon on Amazon Linux 2023
+sudo dnf install -y cronie
+sudo systemctl enable --now crond
+
+# 2. Create the duckdns directory
+mkdir -p ~/duckdns && cd ~/duckdns
+
+# 3. Create the auto-update bash script
+cat << 'EOF' > duck.sh
+#!/bin/bash
+DUCK_TOKEN="YOUR_DUCKDNS_TOKEN"
+DOMAIN="learnportal"
+echo url="https://www.duckdns.org/update?domains=${DOMAIN}&token=${DUCK_TOKEN}&ip=" | curl -k -o /home/ec2-user/duckdns/duck.log -K -
+EOF
+
+# 4. Make executable
+chmod +x duck.sh
+
+# 5. Add to system crontab (Runs on boot and every 5 minutes)
+(crontab -l 2>/dev/null; echo "@reboot /home/ec2-user/duckdns/duck.sh >/dev/null 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /home/ec2-user/duckdns/duck.sh >/dev/null 2>&1") | crontab -
+
+# 6. Test execution
+./duck.sh
+cat duck.log
+```
+*Expected Output:* `OK`
+
+---
+
+### 🏆 Alternative: AWS Elastic IP (100% Static IPv4)
+If you want an IP that **physically never changes** in AWS:
+1. In AWS Console, go to **EC2 > Elastic IPs**.
+2. Click **Allocate Elastic IP address** ➔ **Allocate**.
+3. Click **Actions** ▾ ➔ **Associate Elastic IP address** ➔ select your EC2 instance.
+4. Update DuckDNS once with this static Elastic IP.
+
+---
+
+## 5. Health Check & Verification Checklist
+
+After any restart, verify that all layers of your stack are healthy:
+
+```bash
+# 1. Verify PM2 Services are Green & Online
+pm2 status
+
+# 2. Verify Redis Stream & Cache
+redis-cli ping
+# Output: PONG
+
+# 3. Verify Nginx Ports (Listening on :80 and :443)
+sudo ss -tulpn | grep nginx
+
+# 4. Verify Local Next.js Server
+curl -I http://127.0.0.1:3000/
+
+# 5. Verify Public HTTPS Domain
+curl -I https://learnportal.duckdns.org/
+# Output: HTTP/1.1 200 OK or HTTP/2 200 OK
+```
+
+---
+
+### 🌐 Open in Browser:
+- **Homepage:** `https://learnportal.duckdns.org/`
+- **Student Dashboard:** `https://learnportal.duckdns.org/Student-Dashboard`
+- **Course Catalog:** `https://learnportal.duckdns.org/courses`

@@ -191,133 +191,122 @@ export async function POST(req: NextRequest) {
 
 ---
 
-#### 3. Standalone Background Worker Service: [`workers/certificate-worker.js`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/workers/certificate-worker.js)
+#### 3. Standalone Background Worker Service (TypeScript): [`workers/certificate-worker.ts`](file:///f:/notes/Web%20development%20Roadmap/Beautiful%20ui%20Projects/LMS/lms-online/workers/certificate-worker.ts)
 
-```javascript
-/**
- * =========================================================================
- * Background Certificate Worker Service (Concept #27 - Message Queues)
- * =========================================================================
- * Consumes "COURSE_COMPLETED" events asynchronously from Redis Streams,
- * generates certificates, uploads assets, and dispatches email notifications.
- */
+```typescript
+import Redis from 'ioredis';
+import { COURSE_COMPLETED_STREAM, CourseCompletedPayload } from '../lib/queue';
 
-const Redis = require('ioredis');
-
-const STREAM_NAME = 'stream:course_completed';
+const STREAM_NAME = COURSE_COMPLETED_STREAM || 'stream:course_completed';
 const GROUP_NAME = 'certificate_workers_group';
 const CONSUMER_NAME = `worker_${process.pid}`;
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-const redis = new Redis(REDIS_URL, {
-  maxRetriesPerRequest: 3,
-  retryStrategy(times) {
-    return Math.min(times * 300, 2000);
-  },
-});
-
-let isRunning = true;
+const redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
 
 /**
- * Initializes the Redis Consumer Group for guaranteed at-least-once message processing
+ * Initializes the Redis Consumer Group for guaranteed message delivery
  */
-async function initConsumerGroup() {
+async function initConsumerGroup(): Promise<void> {
   try {
     await redis.xgroup('CREATE', STREAM_NAME, GROUP_NAME, '0', 'MKSTREAM');
-    console.log(`\x1b[32m[Worker Init]\x1b[0m Consumer Group "${GROUP_NAME}" created on stream "${STREAM_NAME}"`);
-  } catch (err) {
-    if (err.message.includes('BUSYGROUP')) {
-      console.log(`\x1b[36m[Worker Init]\x1b[0m Consumer Group "${GROUP_NAME}" ready and active.`);
-    } else {
-      console.warn(`\x1b[33m[Worker Init Warning]\x1b[0m ${err.message}`);
+    console.log(`\x1b[32m[Worker]\x1b[0m Created Consumer Group "${GROUP_NAME}" on stream "${STREAM_NAME}"`);
+  } catch (err: any) {
+    if (!err.message.includes('BUSYGROUP')) {
+      console.warn('[Worker] Consumer group notice:', err.message);
     }
   }
 }
 
 /**
- * Asynchronous job processor for Course Completion
+ * Processes a single Course Completion job asynchronously
  */
-async function processCourseCompletionJob(messageId, data) {
+async function processJob(messageId: string, data: CourseCompletedPayload): Promise<void> {
   const startTime = Date.now();
-  console.log(`\n\x1b[1m\x1b[35m=================================================================\x1b[0m`);
-  console.log(`🚀 \x1b[1m\x1b[32m[EVENT CONSUMED]\x1b[0m Job ID: \x1b[33m${data.jobId || 'N/A'}\x1b[0m | Stream Message ID: ${messageId}`);
-  console.log(`👤 \x1b[1mStudent:\x1b[0m ${data.studentName} (\x1b[4m${data.studentEmail}\x1b[0m)`);
-  console.log(`📚 \x1b[1mCourse:\x1b[0m "${data.courseTitle}" (Instructor: ${data.instructorName || 'Lead Instructor'})`);
-  console.log(`⏰ \x1b[1mCompleted At:\x1b[0m ${data.completedAt || new Date().toISOString()}`);
-  console.log(`\x1b[35m-----------------------------------------------------------------\x1b[0m`);
+  console.log(`\n======================================================`);
+  console.log(`🚀 \x1b[35m[Worker CONSUMER]\x1b[0m Processing Job: \x1b[33m${data.jobId}\x1b[0m (Stream ID: ${messageId})`);
+  console.log(`👤 Student: \x1b[1m${data.studentName}\x1b[0m (${data.studentEmail})`);
+  console.log(`📚 Course: "${data.courseTitle}" (Instructor: ${data.instructorName})`);
+  console.log(`⏰ Completed At: ${data.completedAt}`);
+  console.log(`------------------------------------------------------`);
 
-  // Step 1: High-Resolution PDF Certificate Generation
-  console.log(`📄 \x1b[36m[Step 1/3]\x1b[0m Generating official PDF Certificate vector template...`);
+  // Step 1: PDF Generation simulation (e.g. Canvas / PDFKit / Puppeteer)
+  console.log(`📄 \x1b[36m[Worker Step 1/3]\x1b[0m Generating High-Resolution PDF Certificate...`);
   await new Promise((r) => setTimeout(r, 1200));
 
-  // Step 2: Cloud Asset Storage & Signature
-  const certificateId = `CERT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-  const certificateUrl = `https://res.cloudinary.com/demo/image/upload/certificates/${certificateId}.pdf`;
-  console.log(`☁️  \x1b[36m[Step 2/3]\x1b[0m Certificate rendered & uploaded: \x1b[32m${certificateUrl}\x1b[0m`);
+  // Step 2: Cloud Storage Upload simulation
+  const certificateUrl = `https://res.cloudinary.com/demo/image/upload/certificates/cert_${data.jobId}.pdf`;
+  console.log(`☁️ \x1b[36m[Worker Step 2/3]\x1b[0m Uploaded to Cloud Storage: \x1b[32m${certificateUrl}\x1b[0m`);
   await new Promise((r) => setTimeout(r, 600));
 
-  // Step 3: Transactional Email Notification Dispatch
-  console.log(`📧 \x1b[36m[Step 3/3]\x1b[0m Sending congratulations email & PDF attachment to ${data.studentEmail}...`);
+  // Step 3: Notification Email Delivery simulation
+  console.log(`📧 \x1b[36m[Worker Step 3/3]\x1b[0m Sending Congratulations Email to ${data.studentEmail}...`);
   await new Promise((r) => setTimeout(r, 800));
 
-  const totalTime = Date.now() - startTime;
-  console.log(`\x1b[32m✔ [JOB COMPLETED]\x1b[0m Certificate ${certificateId} delivered in \x1b[1m${totalTime}ms\x1b[0m.`);
-  console.log(`\x1b[1m\x1b[35m=================================================================\x1b[0m\n`);
+  const totalDuration = Date.now() - startTime;
+  console.log(`✅ \x1b[32m[Worker SUCCESS]\x1b[0m Job ${data.jobId} completed in \x1b[1m${totalDuration}ms\x1b[0m! Certificate ready.`);
+  console.log(`======================================================\n`);
 }
 
 /**
  * Continuous Event Consumer Loop
  */
-async function startWorker() {
+async function startWorker(): Promise<void> {
   await initConsumerGroup();
-  console.log(`\x1b[1m\x1b[32m[Certificate Worker Online]\x1b[0m Listening for events on Redis Stream: \x1b[33m${STREAM_NAME}\x1b[0m\n`);
+  console.log(`\x1b[32m[Certificate Worker Online]\x1b[0m Listening for "COURSE_COMPLETED" events on \x1b[33m${STREAM_NAME}\x1b[0m...`);
 
-  while (isRunning) {
+  while (true) {
     try {
-      // Read new messages with XREADGROUP (Blocking poll up to 4000ms)
-      const results = await redis.xreadgroup(
-        'GROUP', GROUP_NAME, CONSUMER_NAME,
-        'BLOCK', 4000,
-        'COUNT', 1,
-        'STREAMS', STREAM_NAME,
+      const results = (await (redis as any).xreadgroup(
+        'GROUP',
+        GROUP_NAME,
+        CONSUMER_NAME,
+        'BLOCK',
+        5000,
+        'COUNT',
+        1,
+        'STREAMS',
+        STREAM_NAME,
         '>'
-      );
+      )) as [string, [string, string[]][]][] | null;
 
       if (results && results.length > 0) {
-        const [stream, messages] = results[0];
+        const [, messages] = results[0];
         for (const [messageId, rawFields] of messages) {
-          const data = {};
+          const rawData: Record<string, string> = {};
           for (let i = 0; i < rawFields.length; i += 2) {
-            data[rawFields[i]] = rawFields[i + 1];
+            rawData[rawFields[i]] = rawFields[i + 1];
           }
 
-          // Process the asynchronous job
-          await processCourseCompletionJob(messageId, data);
+          const payload: CourseCompletedPayload = {
+            jobId: rawData.jobId || `job_${Date.now()}`,
+            studentEmail: rawData.studentEmail || 'student@example.com',
+            studentName: rawData.studentName || 'Student',
+            courseId: rawData.courseId || 'c_default',
+            courseTitle: rawData.courseTitle || 'Course Title',
+            instructorName: rawData.instructorName || 'Instructor',
+            completedAt: rawData.completedAt || new Date().toISOString(),
+          };
 
-          // Acknowledge the message to remove from Pending Entries List (PEL)
+          await processJob(messageId, payload);
           await redis.xack(STREAM_NAME, GROUP_NAME, messageId);
         }
       }
-    } catch (err) {
-      if (isRunning) {
-        console.error(`\x1b[31m[Worker Error]:\x1b[0m`, err.message);
-        await new Promise((r) => setTimeout(r, 2000));
-      }
+    } catch (err: any) {
+      console.error('[Worker Error]:', err.message);
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 }
 
 // Graceful shutdown handling
 process.on('SIGTERM', async () => {
-  console.log('\n[Worker Shutdown] SIGTERM received. Gracefully closing worker...');
-  isRunning = false;
+  console.log('\n[Worker] Gracefully shutting down...');
   await redis.quit();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('\n[Worker Shutdown] SIGINT received. Gracefully closing worker...');
-  isRunning = false;
+  console.log('\n[Worker] Gracefully shutting down...');
   await redis.quit();
   process.exit(0);
 });
@@ -336,30 +325,33 @@ startWorker();
 > ```bash
 > # In local terminal (VS Code):
 > git add .
-> git commit -m "feat: add message queue and asynchronous certificate worker (Concept 27)"
+> git commit -m "feat: add message queue and TypeScript certificate worker (Concept 27)"
 > git push origin Main
 > ```
 
 ---
 
-### Step 1: Pull Code & Start Background Worker with PM2 on EC2
+### Step 1: Pull Code & Start TypeScript Worker with PM2 on EC2
 
 Run these commands in your **EC2 Terminal**:
 
 ```bash
 cd ~/LMS
 
-# 1. Pull latest code from GitHub
+# 1. Cleanly pull latest code with tsx & TypeScript worker from GitHub
 git reset --hard origin/Main
 git pull origin Main
 
-# 2. Start the background Certificate Worker under PM2
-pm2 start workers/certificate-worker.js --name "certificate-worker"
+# 2. Install dependencies (tsx runtime)
+npm install
 
-# 3. Save PM2 list so worker restarts on reboot
+# 3. Start the TypeScript Certificate Worker under PM2
+pm2 start npm --name "certificate-worker" -- run worker
+
+# 4. Save PM2 list so worker restarts on reboot
 pm2 save
 
-# 4. Check active services
+# 5. Check active services
 pm2 status
 ```
 *(You will see `certificate-worker` online alongside `nextjs-frontend`!)*
@@ -391,7 +383,7 @@ Content-Type: application/json
 
 {
   "success": true,
-  "message": "Course completion acknowledged. Certificate is being generated in the background.",
+  "message": "Course completion event published. Certificate is being generated asynchronously.",
   "jobId": "job_1788234123_a9b2c",
   "messageId": "1788234123456-0",
   "status": "QUEUED",
@@ -412,15 +404,15 @@ pm2 logs certificate-worker --lines 25
 *Live Worker Log Output:*
 ```text
 ======================================================
-🚀 [Worker CONSUMER] Processing Job: job_1788234123_a9b2c
+🚀 [Worker CONSUMER] Processing Job: job_1788234123_a9b2c (Stream ID: 1788234123456-0)
 👤 Student: Ethan Hunt (ethan@example.com)
-📚 Course: "Full Stack Web Development"
+📚 Course: "Full Stack Web Development" (Instructor: John Doe)
 ⏰ Completed At: 2026-09-01T11:40:12.450Z
 ------------------------------------------------------
 📄 [Worker Step 1/3] Generating High-Resolution PDF Certificate...
 ☁️ [Worker Step 2/3] Uploaded to Cloud Storage: https://res.cloudinary.com/demo/image/upload/certificates/cert_job_1788234123_a9b2c.pdf
 📧 [Worker Step 3/3] Sending Congratulations Email to ethan@example.com...
-✅ [Worker SUCCESS] Job job_1788234123_a9b2c fully completed! Certificate ready.
+✅ [Worker SUCCESS] Job job_1788234123_a9b2c completed in 2604ms! Certificate ready.
 ======================================================
 ```
 
@@ -437,3 +429,4 @@ redis-cli XREVRANGE stream:course_completed + - COUNT 5
 # View consumer group statistics & pending job counts
 redis-cli XINFO GROUPS stream:course_completed
 ```
+

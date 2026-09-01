@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "worker": "tsx workers/certificate-worker.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
@@ -24,6 +25,7 @@
     "@types/react-dom": "^19.2.5",
     "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.3",
     "typescript": "^5.9.3"
   }
 }

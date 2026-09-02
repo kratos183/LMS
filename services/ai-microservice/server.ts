@@ -1,5 +1,29 @@
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import Redis from 'ioredis';
+
+// Automatically load .env.local and .env
+function loadEnv() {
+  const envFiles = ['.env.local', '.env'];
+  for (const file of envFiles) {
+    const fullPath = path.resolve(process.cwd(), file);
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      content.split('\n').forEach((line) => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+          const [key, ...rest] = trimmed.split('=');
+          const val = rest.join('=').trim().replace(/^["']|["']$/g, '');
+          if (!process.env[key.trim()]) {
+            process.env[key.trim()] = val;
+          }
+        }
+      });
+    }
+  }
+}
+loadEnv();
 
 const PORT = process.env.AI_SERVICE_PORT ? parseInt(process.env.AI_SERVICE_PORT, 10) : 5000;
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';

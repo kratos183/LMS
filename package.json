@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx workers/certificate-worker.ts",
-    "ai-service": "tsx services/ai-microservice/server.ts"
+    "ai-service": "tsx services/ai-microservice/server.ts",
+    "ws-service": "tsx services/websocket-service/server.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
@@ -16,7 +17,9 @@
     "lucide-react": "^1.23.0",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

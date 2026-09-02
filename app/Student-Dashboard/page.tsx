@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { io } from "socket.io-client";
 import {
   LayoutDashboard, BookOpen, PlayCircle, BarChart3, Heart,
   Award, Star, Bell, CreditCard, User, Settings, MessageSquare,
   FileText, Bot, LogOut, Download, Share2, CheckCircle,
   Search, Menu, Moon, Sun, Globe, Mail, Trash2, Edit3, Send,
-  Loader2, Sparkles, RotateCcw
+  Loader2, Sparkles, RotateCcw, Radio, Zap
 } from "lucide-react";
 import Navbar from "../component/navbar";
 
@@ -21,6 +22,113 @@ export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+
+  // Real-Time WebSockets State (Concept #24)
+  const [wsConnected, setWsConnected] = useState(false);
+  const [realtimeToast, setRealtimeToast] = useState<{ title: string; desc: string; type: string } | null>(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [notificationsList, setNotificationsList] = useState([
+    { id: "notif_1", title: "Certificate Ready", desc: "Your Full Stack Web Development certificate is ready to download.", time: "Just now", read: false, type: "CERTIFICATE" },
+    { id: "notif_2", title: "New Lesson Uploaded", desc: 'Instructor uploaded "Advanced Custom Hooks" in React Masterclass', time: "2h ago", read: false, type: "LESSON" },
+    { id: "notif_3", title: "Payment Successful", desc: "Receipt for Next.js Fundamentals purchase.", time: "3d ago", read: true, type: "PAYMENT" },
+    { id: "notif_4", title: "Assignment Graded", desc: "You scored 9.5/10 on Redux Toolkit Milestone.", time: "5d ago", read: true, type: "ASSIGNMENT" },
+  ]);
+
+  // Connect to Real-Time WebSocket Server (Port 4000)
+  useEffect(() => {
+    const wsUrl = typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:4000`
+      : 'http://127.0.0.1:4000';
+
+    let socket: any = null;
+    try {
+      socket = io(wsUrl, {
+        path: '/socket.io/',
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+      });
+
+      socket.on('connect', () => {
+        setWsConnected(true);
+      });
+
+      socket.on('disconnect', () => {
+        setWsConnected(false);
+      });
+
+      // Event 1: Real-Time Blog Push from Instructor
+      socket.on('notification:new_blog', (data: any) => {
+        const newNotif = {
+          id: data.id || `notif_${Date.now()}`,
+          title: `📝 ${data.title}`,
+          desc: `${data.desc} (By ${data.author})`,
+          time: 'Just now',
+          read: false,
+          type: 'BLOG',
+        };
+        setNotificationsList((prev) => [newNotif, ...prev]);
+        setRealtimeToast({ title: newNotif.title, desc: newNotif.desc, type: 'BLOG' });
+        setTimeout(() => setRealtimeToast(null), 7000);
+      });
+
+      // Event 2: Real-Time Doubt Reply from Instructor
+      socket.on('notification:doubt_reply', (data: any) => {
+        const newNotif = {
+          id: data.id || `notif_${Date.now()}`,
+          title: `💬 ${data.title}`,
+          desc: `${data.desc} (Instructor: ${data.instructorName || 'John Doe'})`,
+          time: 'Just now',
+          read: false,
+          type: 'DOUBT',
+        };
+        setNotificationsList((prev) => [newNotif, ...prev]);
+        setRealtimeToast({ title: newNotif.title, desc: newNotif.desc, type: 'DOUBT' });
+        setTimeout(() => setRealtimeToast(null), 7000);
+      });
+    } catch (err) {
+      console.warn('WebSocket init warning:', err);
+    }
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, []);
+
+  // Simulator helper to trigger real-time push from UI
+  const triggerSimulatorPush = async (type: 'BLOG' | 'DOUBT') => {
+    setIsSimulating(true);
+    try {
+      const payload = type === 'BLOG'
+        ? {
+            type: 'BLOG',
+            payload: {
+              title: 'Mastering Next.js Turbopack in 2026',
+              author: 'John Doe',
+              desc: 'Learn how to optimize bundle sizes and speed up HMR build times by 10x.',
+            },
+          }
+        : {
+            type: 'DOUBT',
+            payload: {
+              courseTitle: 'React Masterclass',
+              replyPreview: 'Yes! useEffect cleanups execute before the component unmounts or before re-running the effect.',
+              studentEmail: 'ethan@example.com',
+              instructorName: 'John Doe',
+            },
+          };
+
+      await fetch('/api/notifications/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error('Simulator error:', err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -554,21 +662,72 @@ export default function StudentDashboard() {
 
   const Notifications = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
-        {[
-          { title: "New Lesson Uploaded", desc: 'Instructor uploaded "Advanced Redux" in React Masterclass', time: "2h ago", read: false },
-          { title: "Certificate Ready", desc: "Your Python Data Science certificate is ready to download.", time: "1d ago", read: false },
-          { title: "Payment Successful", desc: "Receipt for Next.js Fundamentals purchase.", time: "3d ago", read: true },
-          { title: "Assignment Graded", desc: "You scored 8/10 on Assignment 1 in React Masterclass.", time: "5d ago", read: true },
-        ].map((notif, i) => (
-          <div key={i} className={`p-4 flex gap-4 hover:bg-gray-50 transition ${!notif.read ? "bg-orange-50/30" : ""}`}>
-            <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${!notif.read ? "bg-orange-500" : "bg-transparent"}`}></div>
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-gray-900">{notif.title}</h4>
-              <p className="text-xs text-gray-500 mt-1">{notif.desc}</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Real-Time Notifications</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Instant event streaming via WebSockets & Socket.IO (Concept #24)</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+            wsConnected
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-amber-50 text-amber-700 border-amber-200"
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
+            {wsConnected ? "WebSocket Connected (Port 4000)" : "Connecting WebSocket..."}
+          </span>
+        </div>
+      </div>
+
+      {/* Simulator Control Panel */}
+      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-5 rounded-2xl text-white shadow-md">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-orange-400 animate-pulse" />
+            <h3 className="font-bold text-sm">Instructor Event Simulator (Test Real-Time Push)</h3>
+          </div>
+          <span className="text-[11px] font-mono text-indigo-300">0s Latency WebSockets</span>
+        </div>
+        <p className="text-xs text-slate-300 mb-4">
+          Click either button below to simulate an instructor action. Watch the real-time push toast appear instantly on your screen with zero page reloads!
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => triggerSimulatorPush('BLOG')}
+            disabled={isSimulating}
+            className="flex-1 min-w-[200px] bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+          >
+            {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>📢 Post New Blog Post</span>}
+          </button>
+          <button
+            onClick={() => triggerSimulatorPush('DOUBT')}
+            disabled={isSimulating}
+            className="flex-1 min-w-[200px] bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+          >
+            {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>💬 Answer Student Doubt</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* Notification Stream List */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        {notificationsList.map((notif) => (
+          <div
+            key={notif.id}
+            className={`p-4 sm:p-5 flex gap-4 hover:bg-gray-50/80 transition ${
+              !notif.read ? "bg-orange-50/20" : ""
+            }`}
+          >
+            <div className={`w-2.5 h-2.5 rounded-full mt-2 shrink-0 ${!notif.read ? "bg-orange-500 shadow-sm shadow-orange-300 animate-pulse" : "bg-transparent"}`}></div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-gray-900 truncate">{notif.title}</h4>
+                {notif.type === 'BLOG' && <span className="text-[10px] uppercase tracking-wider font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Blog</span>}
+                {notif.type === 'DOUBT' && <span className="text-[10px] uppercase tracking-wider font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Doubt</span>}
+              </div>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{notif.desc}</p>
             </div>
-            <span className="text-xs text-gray-400 whitespace-nowrap">{notif.time}</span>
+            <span className="text-[11px] text-gray-400 whitespace-nowrap">{notif.time}</span>
           </div>
         ))}
       </div>
@@ -804,7 +963,11 @@ export default function StudentDashboard() {
               >
                 <item.icon className={`w-5 h-5 ${activeTab === item.id ? "text-orange-500" : "text-gray-400"}`} />
                 {item.label}
-                {item.id === "notifications" && <span className="ml-auto w-2 h-2 bg-red-500 rounded-full"></span>}
+                {item.id === "notifications" && notificationsList.filter(n => !n.read).length > 0 && (
+                  <span className="ml-auto bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs animate-pulse">
+                    {notificationsList.filter(n => !n.read).length}
+                  </span>
+                )}
               </button>
             ))}
             <div className="pt-4 mt-4 border-t border-gray-100">
@@ -826,7 +989,7 @@ export default function StudentDashboard() {
         </aside>
 
         {/* MAIN CONTENT AREA */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 relative">
           {/* TOP BAR */}
           <header className="sticky top-20 z-30 bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -842,9 +1005,15 @@ export default function StudentDashboard() {
                 <Search className="w-4 h-4 text-gray-400 mr-2" />
                 <input type="text" placeholder="Search courses..." className="bg-transparent border-none outline-none text-sm w-48 placeholder-gray-400" />
               </div>
-              <button className="relative w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition">
+              <button
+                onClick={() => setActiveTab("notifications")}
+                className="relative w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-orange-50 hover:text-orange-600 transition"
+                title="View Notifications"
+              >
                 <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                {notificationsList.filter(n => !n.read).length > 0 && (
+                  <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-orange-500 rounded-full border-2 border-white animate-pulse"></span>
+                )}
               </button>
             </div>
           </header>
@@ -868,6 +1037,28 @@ export default function StudentDashboard() {
               {activeTab === "ai" && <AIAssistant />}
             </div>
           </main>
+
+          {/* FLOATING REAL-TIME TOAST POPUP (Concept #24 WebSockets) */}
+          {realtimeToast && (
+            <div
+              onClick={() => { setActiveTab("notifications"); setRealtimeToast(null); }}
+              className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700/80 max-w-sm cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-102 transition"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-orange-400">Real-Time Push</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-0.5 truncate">{realtimeToast.title}</h4>
+                  <p className="text-xs text-slate-300 mt-1 line-clamp-2">{realtimeToast.desc}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
       </div>

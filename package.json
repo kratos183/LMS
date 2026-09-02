@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "worker": "tsx workers/certificate-worker.ts"
+    "worker": "tsx workers/certificate-worker.ts",
+    "ai-service": "tsx services/ai-microservice/server.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

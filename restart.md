@@ -1,16 +1,43 @@
 # 🔄 EC2 Instance Restart & Auto-Recovery Operations Guide
 
-This guide covers everything you need to know about restarting your AWS EC2 instance, starting the LMS web services (Next.js, Redis, Nginx, Background Workers), and automating permanent IP synchronization with DuckDNS.
+---
+
+## 🚨 Got "502 Bad Gateway"? Instant 10-Second Fix
+
+A **502 Bad Gateway** simply means **Nginx is running on Port 80/443, but Next.js (Port 3000) is stopped in PM2**.
+
+👉 **Copy and paste this exact block into your EC2 Terminal to fix it instantly:**
+
+```bash
+cd ~/LMS
+
+# 1. Start Redis & Nginx
+sudo systemctl start redis6
+sudo systemctl restart nginx
+
+# 2. Reset PM2 and start all 4 microservices
+pm2 delete all
+pm2 start npm --name "nextjs-frontend" -- start -- -p 3000
+pm2 start npm --name "certificate-worker" -- run worker
+pm2 start npm --name "ai-microservice" -- run ai-service
+pm2 start npm --name "websocket-service" -- run ws-service
+
+# 3. Save process list (so it auto-starts on future reboots)
+pm2 save
+pm2 status
+```
+*(Your website `https://learnportal.duckdns.org` will instantly turn **HTTP 200 OK**!)*
 
 ---
 
 ## 📑 Table of Contents
-1. [How to Restart the EC2 Instance](#1-how-to-restart-the-ec2-instance)
-2. [Starting Web Application Services After a Reboot](#2-starting-web-application-services-after-a-reboot)
-3. [One-Click Clean Restart Command](#3-one-click-clean-restart-command)
-4. [Automated Permanent DuckDNS IP Assignment](#4-automated-permanent-duckdns-ip-assignment)
-5. [Health Check & Verification Checklist](#5-health-check--verification-checklist)
-6. [How to Connect via Windows SSH Terminal (No .pem Required)](#6-how-to-connect-via-windows-ssh-terminal-no-pem-required)
+1. [502 Bad Gateway Instant Fix](#-got-502-bad-gateway-instant-fix)
+2. [How to Restart the EC2 Instance](#1-how-to-restart-the-ec2-instance)
+3. [Starting Web Application Services After a Reboot](#2-starting-web-application-services-after-a-reboot)
+4. [One-Click Clean Restart Command](#3-one-click-clean-restart-command-all-4-microservices)
+5. [Automated Permanent DuckDNS IP Assignment](#4-automated-permanent-duckdns-ip-assignment)
+6. [Health Check & Verification Checklist](#5-health-check--verification-checklist)
+7. [How to Connect via Windows SSH Terminal (No .pem Required)](#6-how-to-connect-via-windows-ssh-terminal-no-pem-required)
 
 ---
 

@@ -11,20 +11,27 @@ A **502 Bad Gateway** simply means **Nginx is running on Port 80/443, but Next.j
 ```bash
 cd ~/LMS
 
-# 1. Start Redis & Nginx
+# 1. Pull latest code & install dependencies
+git reset --hard origin/Main
+git pull origin Main
+npm install
+npm run build
+
+# 2. Start Redis & Nginx
 sudo systemctl start redis6
 sudo systemctl restart nginx
 
-# 2. Reset PM2 and start all 4 microservices
+# 3. Clean start all 4 PM2 microservices
 pm2 delete all
 pm2 start npm --name "nextjs-frontend" -- start -- -p 3000
 pm2 start npm --name "certificate-worker" -- run worker
 pm2 start npm --name "ai-microservice" -- run ai-service
 pm2 start npm --name "websocket-service" -- run ws-service
 
-# 3. Save process list (so it auto-starts on future reboots)
+# 4. Save list so it automatically starts on any future reboot!
 pm2 save
 pm2 status
+
 ```
 *(Your website `https://learnportal.duckdns.org` will instantly turn **HTTP 200 OK**!)*
 

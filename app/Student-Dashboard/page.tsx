@@ -34,10 +34,10 @@ export default function StudentDashboard() {
     { id: "notif_4", title: "Assignment Graded", desc: "You scored 9.5/10 on Redux Toolkit Milestone.", time: "5d ago", read: true, type: "ASSIGNMENT" },
   ]);
 
-  // Connect to Real-Time WebSocket Server (Port 4000)
+  // Connect to Real-Time WebSocket Server (Port 4000 / Nginx Proxy)
   useEffect(() => {
     const wsUrl = typeof window !== 'undefined'
-      ? `${window.location.protocol}//${window.location.hostname}:4000`
+      ? (window.location.port ? `${window.location.protocol}//${window.location.hostname}:4000` : window.location.origin)
       : 'http://127.0.0.1:4000';
 
     let socket: any = null;

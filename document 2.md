@@ -2,6 +2,14 @@
 
 ---
 
+## 📑 Table of Contents
+1. [Message Queues & Event-Driven Architecture (Concept #27)](#1-message-queues--event-driven-architecture-concept-27)
+2. [Microservices Architecture & API Gateway (Concept #26)](#2-microservices-architecture-concept-26)
+3. [WebSockets & Real-Time Push Notifications (Concept #24)](#3-websockets--real-time-push-notifications-concept-24)
+4. [Webhooks, HMAC Verification & CAP Theorem (Concept #25)](#4-webhooks-hmac-verification--cap-theorem-concept-25)
+
+---
+
 ## 1. Message Queues & Event-Driven Architecture (Concept #27)
 
 > **Action:** When a student completes a course, decouple heavy tasks (PDF certificate generation, Cloudinary upload, email dispatch) from the main API.  

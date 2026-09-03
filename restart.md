@@ -2,11 +2,9 @@
 
 ---
 
-## 🚨 Got "502 Bad Gateway"? Instant 10-Second Fix
+## 🚨 Got "502 Bad Gateway" or Restarting the Server? Instant Master Script
 
-A **502 Bad Gateway** simply means **Nginx is running on Port 80/443, but Next.js (Port 3000) is stopped in PM2**.
-
-👉 **Copy and paste this exact block into your EC2 Terminal to fix it instantly:**
+👉 **Copy and paste this exact block into your EC2 Terminal to ensure all 4 microservices, Redis, Nginx, and WebSocket SSL proxies are 100% online:**
 
 ```bash
 cd ~/LMS
@@ -17,23 +15,50 @@ git pull origin Main
 npm install
 npm run build
 
-# 2. Start Redis & Nginx
-sudo systemctl start redis6
-sudo systemctl restart nginx
+# 2. Configure Nginx Reverse Proxy (Next.js :3000 + WebSockets :4000)
+sudo python3 -c '
+import glob, os, re
+files = ["/etc/nginx/nginx.conf"] + glob.glob("/etc/nginx/conf.d/*.conf")
+ws_block = """
+    # Real-Time WebSocket Proxy (Port 4000)
+    location /socket.io {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+"""
+for filepath in files:
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            content = f.read()
+        if "proxy_pass http://127.0.0.1:3000" in content:
+            content = re.sub(r"location\s+[\^~]*\s*/socket\.io[^{]*\{[^}]*\}", "", content)
+            content = content.replace("location / {", ws_block + "\n    location / {")
+            with open(filepath, "w") as f:
+                f.write(content)
+'
 
-# 3. Clean start all 4 PM2 microservices
+# 3. Start Redis & Restart Nginx
+sudo systemctl start redis6
+sudo nginx -t && sudo systemctl restart nginx
+
+# 4. Clean start all 4 PM2 microservices
 pm2 delete all
 pm2 start npm --name "nextjs-frontend" -- start -- -p 3000
 pm2 start npm --name "certificate-worker" -- run worker
 pm2 start npm --name "ai-microservice" -- run ai-service
 pm2 start npm --name "websocket-service" -- run ws-service
 
-# 4. Save list so it automatically starts on any future reboot!
+# 5. Save process list (so it auto-starts on future reboots)
 pm2 save
 pm2 status
-
 ```
-*(Your website `https://learnportal.duckdns.org` will instantly turn **HTTP 200 OK**!)*
+*(Your website `https://learnportal.duckdns.org` will turn **HTTP 200 OK** with real-time WebSockets active!)*
 
 ---
 

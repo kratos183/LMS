@@ -37,14 +37,53 @@ sudo reboot
 
 ---
 
-### Method C: Via AWS CLI
-```bash
-# Soft reboot
-aws ec2 reboot-instances --instance-ids YOUR_INSTANCE_ID
+### Method C: Via AWS CLI (Accurate CLI Playbook)
 
-# Hard stop and start
-aws ec2 stop-instances --instance-ids YOUR_INSTANCE_ID
-aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID
+If you have the **AWS CLI** installed on your local computer or terminal, you can manage and restart your instance using the following commands:
+
+#### 1. (One-time) Configure AWS CLI Credentials:
+```bash
+aws configure
+# Enter your AWS Access Key ID, Secret Access Key, and Region (e.g., ap-south-1 or eu-north-1)
+```
+
+#### 2. Find Your Instance ID & Current Status:
+```bash
+aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running,stopped" \
+  --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],State.Name,PublicIpAddress]" \
+  --output table
+```
+
+#### 3. Perform a Fast Soft Reboot (No IP Change):
+```bash
+aws ec2 reboot-instances --instance-ids i-0123456789abcdef0
+```
+*(Reboots the operating system without shutting down the hypervisor host or releasing the dynamic IP).*
+
+#### 4. Perform a Clean Stop, Wait, and Start (Hard Reboot / Scaling):
+```bash
+# A. Send Stop command
+aws ec2 stop-instances --instance-ids i-0123456789abcdef0
+
+# B. Wait until instance has completely stopped
+aws ec2 wait instance-stopped --instance-ids i-0123456789abcdef0
+echo "Instance stopped successfully."
+
+# C. Send Start command
+aws ec2 start-instances --instance-ids i-0123456789abcdef0
+
+# D. Wait until instance is fully online
+aws ec2 wait instance-running --instance-ids i-0123456789abcdef0
+echo "Instance is running and ready for connections!"
+```
+
+#### 5. Verify Instance Health Checks via CLI:
+```bash
+aws ec2 describe-instance-status \
+  --instance-ids i-0123456789abcdef0 \
+  --query "InstanceStatuses[*].[InstanceId,InstanceState.Name,SystemStatus.Status,InstanceStatus.Status]" \
+  --output table
 ```
 
 ---
@@ -65,7 +104,7 @@ sudo systemctl start nginx
 sudo systemctl enable nginx
 ```
 
-### 3. Next.js Frontend & TypeScript Background Worker (PM2)
+### 3. Restore All PM2 Microservices
 ```bash
 cd ~/LMS
 
@@ -75,26 +114,36 @@ pm2 resurrect
 
 ---
 
-## 3. One-Click Clean Restart Command
+## 3. One-Click Clean Restart Command (All 4 Microservices)
 
-If you ever want to cleanly rebuild and restart all services in one go, run this single block in your **EC2 Terminal**:
+If you ever want to cleanly rebuild and restart all 4 application microservices in one go, run this single block in your **EC2 Terminal**:
 
 ```bash
 cd ~/LMS
 
-# 1. Start system services
+# 1. Start system background daemons
 sudo systemctl start redis6
 sudo systemctl start nginx
 
-# 2. Reset PM2 and start Next.js + Certificate Worker cleanly
+# 2. Reset PM2 and cleanly launch all 4 microservices
 pm2 delete all
+
+# Service 1: Next.js Frontend & API Gateway (Port 3000)
 pm2 start npm --name "nextjs-frontend" -- start -- -p 3000
+
+# Service 2: Asynchronous Certificate Generation Queue Worker
 pm2 start npm --name "certificate-worker" -- run worker
 
-# 3. Save process list so it survives future reboots
+# Service 3: Standalone AI Study Assistant Microservice (Port 5000)
+pm2 start npm --name "ai-microservice" -- run ai-service
+
+# Service 4: Real-Time WebSocket Push Notification Service (Port 4000)
+pm2 start npm --name "websocket-service" -- run ws-service
+
+# 3. Save PM2 list so all 4 services survive future reboots
 pm2 save
 
-# 4. Check status
+# 4. Check active status
 pm2 status
 ```
 

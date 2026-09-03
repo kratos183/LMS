@@ -8,7 +8,8 @@
     "start": "next start",
     "worker": "tsx workers/certificate-worker.ts",
     "ai-service": "tsx services/ai-microservice/server.ts",
-    "ws-service": "tsx services/websocket-service/server.ts"
+    "ws-service": "tsx services/websocket-service/server.ts",
+    "simulate:webhook": "tsx scripts/simulate-razorpay-webhook.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

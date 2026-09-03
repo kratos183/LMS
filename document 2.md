@@ -961,5 +961,159 @@ curl -i -X POST http://127.0.0.1:4000/notify/doubt \
   }'
 ```
 
+---
+
+## 4. Webhooks, HMAC Verification & CAP Theorem (Concept #25)
+
+> **Action:** Use **Razorpay Webhooks** to handle payment lifecycle events asynchronously.  
+> **Engineering Pipeline:**  
+> When a student completes a payment (Card / UPI / NetBanking), the payment gateway fires an asynchronous webhook event (`payment.captured`, `order.paid`) to `https://learnportal.duckdns.org/api/webhooks/razorpay`.  
+> The server verifies the **HMAC-SHA256 Cryptographic Signature**, checks **Distributed Idempotency (Redis locks)**, updates the student record, and triggers a real-time push via WebSockets to unlock the course with zero page refresh.
+
+---
+
+### 🏛️ System Design Architecture: CAP Theorem & Idempotent Webhooks
+
+```
+Student Browser (Checkout)                   Razorpay / Payment Gateway Server
+      │                                                │
+      ├─────── 1. Complete UPI / Card Payment ────────►│ (Bank Authorization OK)
+      │                                                │
+      │                                                ▼ (Asynchronous Webhook POST)
+      │                            ┌──────────────────────────────────────────────┐
+      │                            │ Next.js Webhook Receiver (Port 3000)         │
+      │                            │                                              │
+      │                            │ 🔐 Step 1: HMAC-SHA256 Signature Verify     │
+      │                            │    Timing-safe comparison against Secret    │
+      │                            │                                              │
+      │                            │ 🛡️ Step 2: Redis Idempotency Lock            │
+      │                            │    SETNX payment:processed:<pay_id> 1       │
+      │                            │    (Prevents duplicate course enrollments)   │
+      │                            │                                              │
+      │                            │ 💾 Step 3: Database Transaction & Invoice    │
+      │                            │    Generate Invoice ID & Unlock Access       │
+      │                            │                                              │
+      │                            │ ⚡ Step 4: WebSockets Event Broadcast        │
+      │                            └──────────────────────┬───────────────────────┘
+      │                                                   │
+      │◄────── 5. Real-Time Push Toast: "Course Unlocked" ┤ (WebSocket Port 4000)
+      │
+      ▼
+ Dashboard immediately displays "Enrolled & Active" with 0s reload!
+```
+
+---
+
+### 🧠 Deep Dive: The CAP Theorem & Eventual Consistency in Payments
+
+In distributed system architecture (like payment gateways + web servers + databases), the **CAP Theorem** states that a distributed data store can only provide **two of the three** guarantees:
+
+```
+                      Consistency (C)
+                       /           \
+                      /             \
+                     /   CAP Trade-  \
+                    /      offs       \
+                   /                   \
+        Availability (A) ────────── Partition Tolerance (P)
+```
+
+1. **Consistency (C):** Every read receives the most recent write or an error (No student is double-charged, and no course is unlocked without confirmed funds).
+2. **Availability (A):** Every request receives a non-error response, without the guarantee that it contains the most recent write.
+3. **Partition Tolerance (P):** The system continues to operate despite arbitrary network dropped messages.
+
+#### 💡 How We Handle Payment Eventual Consistency (CP vs. AP):
+- Networks *always* have latency and dropped packets (**P is mandatory in the real world**).
+- When a payment occurs, Razorpay uses **At-Least-Once Delivery** (it may retry sending the webhook 5 times if your server takes > 5 seconds to answer).
+- To guarantee **Consistency (C)** and prevent double-crediting a student, our webhook endpoint utilizes an **Atomic Redis Distributed Lock (`SETNX payment:processed:<id> 1 EX 86400 NX`)**:
+  - **First Webhook:** Locks key $\to$ Enrolls Student $\to$ Returns `200 OK (CAPTURED)`.
+  - **Duplicate/Retry Webhook:** Key exists $\to$ Returns `200 OK (ALREADY_PROCESSED - Idempotent)` without re-executing database writes!
+
+---
+
+### 💻 Webhook Implementation Code
+
+#### 1. Cryptographic HMAC Verification & Idempotency Receiver (`app/api/webhooks/razorpay/route.ts`)
+```typescript
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
+import { getRedisClient } from '@/lib/redis';
+
+const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_webhook_secret_edupress_2026';
+
+function verifyRazorpaySignature(rawBody: string, signature: string, secret: string): boolean {
+  if (!signature || !secret) return false;
+  const expectedSignature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+  const actualBuffer = Buffer.from(signature, 'utf8');
+  if (expectedBuffer.length !== actualBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer); // Timing-safe check
+}
+
+export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+  const signature = req.headers.get('x-razorpay-signature') || '';
+
+  // 1. Cryptographic Verification
+  if (!verifyRazorpaySignature(rawBody, signature, WEBHOOK_SECRET)) {
+    return NextResponse.json({ error: 'Invalid Cryptographic Signature' }, { status: 400 });
+  }
+
+  const payload = JSON.parse(rawBody);
+  const paymentId = payload.payload.payment.entity.id;
+
+  // 2. Distributed Idempotency Lock via Redis
+  const redis = getRedisClient();
+  if (redis) {
+    const isNew = await redis.set(`payment:processed:${paymentId}`, '1', 'EX', 86400, 'NX');
+    if (!isNew) {
+      return NextResponse.json({ message: 'Already processed (Idempotent)' }, { status: 200 });
+    }
+  }
+
+  // 3. Database Enrollment & WebSocket Push
+  // ...
+  return NextResponse.json({ success: true, status: 'CAPTURED' });
+}
+```
+
+---
+
+### 🧪 Step-by-Step CLI Testing & Verification
+
+We created a built-in cryptographic CLI simulator in **`scripts/simulate-razorpay-webhook.ts`** that signs payloads using HMAC-SHA256 and tests all 3 critical distributed system scenarios:
+
+#### Scenario 1: Test Authentic Signed Payment Capture (`HTTP 200 OK`)
+```bash
+npx tsx scripts/simulate-razorpay-webhook.ts https://learnportal.duckdns.org/api/webhooks/razorpay VALID
+```
+*Expected Output:*
+```text
+🔐 [Valid Signature] Computed HMAC-SHA256: 8a4c1f...
+📬 Response Status: HTTP 200 (18ms)
+🎉 [TEST PASSED] Webhook cryptographically verified & enrollment processed!
+```
+
+#### Scenario 2: Test Idempotency & Replay Attack Defense (`HTTP 200 OK - Duplicate Ignored`)
+```bash
+npx tsx scripts/simulate-razorpay-webhook.ts https://learnportal.duckdns.org/api/webhooks/razorpay DUPLICATE
+```
+*Expected Output:*
+```text
+🛡️ [IDEMPOTENCY PASSED] Replay attack detected and ignored gracefully!
+```
+
+#### Scenario 3: Test Security Defense against Forged/Tampered Signatures (`HTTP 400 Bad Request`)
+```bash
+npx tsx scripts/simulate-razorpay-webhook.ts https://learnportal.duckdns.org/api/webhooks/razorpay TAMPERED
+```
+*Expected Output:*
+```text
+⚠️ [Attacker Test] Sending forged signature: fake_tampered_signature_99...
+📬 Response Status: HTTP 400 (4ms)
+🛡️ [SECURITY TEST PASSED] Forged webhook correctly rejected with 400 Bad Request!
+```
+
+
 
 

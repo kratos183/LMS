@@ -197,81 +197,141 @@ export default function CourseDetailPage() {
     }
   };
 
-  // Simulate Razorpay Test Payment Execution
+  // Load Razorpay Official Checkout SDK Script
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      try {
+        document.body.removeChild(script);
+      } catch {}
+    };
+  }, []);
+
+  const completeEnrollment = async (paymentId: string, orderId: string) => {
+    const numericAmount = typeof course?.price === 'number'
+      ? course.price
+      : (course?.price ? parseFloat(String(course?.price).replace(/[^0-9.]/g, '')) || 19999 : 19999);
+
+    const invoiceId = `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    localStorage.setItem(`enrolled_${courseId}`, 'true');
+
+    // Record in purchases history for Student Dashboard
+    const existingPurchases = JSON.parse(localStorage.getItem('student_purchases') || '[]');
+    existingPurchases.unshift({
+      course: course?.title || 'Cybersecurity Masterclass',
+      price: `₹${numericAmount}`,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      invoiceId: invoiceId,
+      paymentId: paymentId,
+      status: 'Completed',
+    });
+    localStorage.setItem('student_purchases', JSON.stringify(existingPurchases));
+
+    // Call backend webhook API to record in Redis & database
+    try {
+      await fetch('/api/webhooks/razorpay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Razorpay-Signature': 'live_or_simulated_signature',
+        },
+        body: JSON.stringify({
+          entity: 'event',
+          event: 'payment.captured',
+          payload: {
+            payment: {
+              entity: {
+                id: paymentId,
+                order_id: orderId,
+                amount: numericAmount * 100,
+                currency: 'INR',
+                status: 'captured',
+                method: selectedPaymentTab,
+                email: 'ethan.hunt@example.com',
+                notes: {
+                  courseId: courseId,
+                  courseTitle: course?.title || 'Cybersecurity Masterclass',
+                  studentName: 'Ethan Hunt',
+                },
+              },
+            },
+          },
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    setIsEnrolled(true);
+    setPaymentSuccessData({ paymentId, invoiceId });
+
+    if (targetLockedLesson) {
+      setActiveLesson(targetLockedLesson);
+    } else if (lessons.length > 0) {
+      setActiveLesson(lessons[1] || lessons[0]);
+    }
+  };
+
+  // Handle Razorpay Payment (Supports both Official Razorpay Popup & Sandbox Simulator)
   const handleExecutePayment = async () => {
     setIsProcessingPayment(true);
 
     try {
-      // 1. Generate simulated payment details
-      const paymentId = `pay_rzp_${Date.now().toString(36).toUpperCase()}`;
-      const orderId = `order_${Date.now().toString(36).toUpperCase()}`;
       const numericAmount = typeof course?.price === 'number'
         ? course.price
         : (course?.price ? parseFloat(String(course?.price).replace(/[^0-9.]/g, '')) || 19999 : 19999);
 
-      // 2. Call our backend Razorpay webhook endpoint with simulated payload
-      const webhookPayload = {
-        entity: 'event',
-        event: 'payment.captured',
-        payload: {
-          payment: {
-            entity: {
-              id: paymentId,
-              order_id: orderId,
-              amount: numericAmount * 100, // in paise
-              currency: 'INR',
-              status: 'captured',
-              method: selectedPaymentTab,
-              email: 'ethan.hunt@example.com',
-              notes: {
-                courseId: courseId,
-                courseTitle: course?.title || 'Cybersecurity Masterclass',
-                studentName: 'Ethan Hunt',
-              },
+      const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+
+      // 1. If official Razorpay Key ID is present, launch official Razorpay standard popup
+      if (
+        typeof window !== 'undefined' &&
+        (window as any).Razorpay &&
+        rzpKey &&
+        rzpKey.startsWith('rzp_') &&
+        rzpKey !== 'rzp_test_YOUR_KEY_ID_HERE'
+      ) {
+        const options = {
+          key: rzpKey,
+          amount: numericAmount * 100, // in paise
+          currency: 'INR',
+          name: 'EduPress LMS',
+          description: `Enrollment: ${course?.title || 'Course'}`,
+          image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=100&h=100&fit=crop',
+          handler: async function (response: any) {
+            await completeEnrollment(
+              response.razorpay_payment_id || `pay_${Date.now()}`,
+              response.razorpay_order_id || `order_${Date.now()}`
+            );
+          },
+          prefill: {
+            name: 'Ethan Hunt',
+            email: 'ethan.hunt@example.com',
+            contact: '+919876543210',
+          },
+          theme: {
+            color: '#f97316',
+          },
+          modal: {
+            ondismiss: function () {
+              setIsProcessingPayment(false);
             },
           },
-        },
-      };
+        };
 
-      // 3. Trigger backend webhook API directly (or local simulation)
-      try {
-        await fetch('/api/webhooks/razorpay', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Razorpay-Signature': 'simulated_test_signature',
-          },
-          body: JSON.stringify(webhookPayload),
-        }).catch(() => {});
-      } catch {}
-
-      // 4. Update local storage enrollment & purchase records
-      const invoiceId = `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-      localStorage.setItem(`enrolled_${courseId}`, 'true');
-
-      // Record in purchases history
-      const existingPurchases = JSON.parse(localStorage.getItem('student_purchases') || '[]');
-      existingPurchases.unshift({
-        course: course?.title || 'Cybersecurity Masterclass',
-        price: `₹${numericAmount}`,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        invoiceId: invoiceId,
-        paymentId: paymentId,
-        status: 'Completed',
-      });
-      localStorage.setItem('student_purchases', JSON.stringify(existingPurchases));
-
-      setIsEnrolled(true);
-      setPaymentSuccessData({ paymentId, invoiceId });
-
-      // Automatically play the target lesson if one was clicked
-      if (targetLockedLesson) {
-        setActiveLesson(targetLockedLesson);
-      } else if (lessons.length > 0) {
-        setActiveLesson(lessons[1] || lessons[0]);
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+        setIsProcessingPayment(false);
+        return;
       }
+
+      // 2. Direct Built-In Sandbox Simulator Flow
+      const paymentId = `pay_rzp_${Date.now().toString(36).toUpperCase()}`;
+      const orderId = `order_${Date.now().toString(36).toUpperCase()}`;
+      await completeEnrollment(paymentId, orderId);
     } catch (err) {
-      console.error('Payment simulation error:', err);
+      console.error('Payment error:', err);
     } finally {
       setIsProcessingPayment(false);
     }

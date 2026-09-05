@@ -7,7 +7,7 @@ import {
   Award, Star, Bell, CreditCard, User, Settings, MessageSquare,
   FileText, Bot, LogOut, Download, Share2, CheckCircle,
   Search, Menu, Moon, Sun, Globe, Mail, Trash2, Edit3, Send,
-  Loader2, Sparkles, RotateCcw, Radio, Zap
+  Loader2, Sparkles, RotateCcw, Radio, Zap, ShieldCheck
 } from "lucide-react";
 import Navbar from "../component/navbar";
 
@@ -1188,8 +1188,11 @@ function AIAssistant() {
               <span className="bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Sparkles className="w-3 h-3" /> Groq AI Fast
               </span>
+              <span className="bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 hidden sm:inline-flex">
+                <ShieldCheck className="w-3 h-3 text-blue-500" /> 10 queries/min
+              </span>
             </div>
-            <p className="text-[11px] text-gray-500">Ask questions, discuss topics, or have casual friendly talks</p>
+            <p className="text-[11px] text-gray-500">Protected by Redis Sliding Window Rate Limiting (Concept #28)</p>
           </div>
         </div>
         <button

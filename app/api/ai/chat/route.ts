@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rate-limiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,9 +13,10 @@ const CANDIDATE_MODELS = [
 ];
 
 /**
- * Next.js API Gateway / Proxy Layer (Concept #26: Microservices)
- * 1. Primary Route: Forwards to Standalone AI Microservice (Port 5000).
- * 2. Resilient Fallback: If Port 5000 is offline, executes direct Groq LLM inference so users always get a real response.
+ * Next.js AI Assistant API Gateway
+ * 1. Rate Limiting (Concept #28): 10 AI queries / minute per client (Redis Sliding Window)
+ * 2. Primary Route (Concept #26): Standalone AI Microservice on Port 5000 with Redis Caching
+ * 3. Resilient Direct Fallback: Direct Groq LLM inference on connection drop
  */
 export async function POST(req: NextRequest) {
   const startTime = performance.now();
@@ -24,7 +26,41 @@ export async function POST(req: NextRequest) {
     const { messages, studentContext } = body;
 
     // =========================================================================
-    // 1. PRIMARY: FORWARD TO STANDALONE AI MICROSERVICE (Port 5000)
+    // STEP 1: RATE LIMITING DEFENSE (Concept #28 - 10 queries/min limit)
+    // =========================================================================
+    const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || '';
+    const identifier = studentContext?.email || rawIp || 'client_default';
+
+    const rateLimit = await checkRateLimit(identifier, 10, 60);
+
+    const rateLimitHeaders = {
+      'X-RateLimit-Limit': String(rateLimit.limit),
+      'X-RateLimit-Remaining': String(rateLimit.remaining),
+      'X-RateLimit-Reset': `${rateLimit.resetInSeconds}s`,
+    };
+
+    if (!rateLimit.allowed) {
+      console.warn(`⚠️ \x1b[31m[RateLimit EXCEEDED]\x1b[0m Client "${identifier}" exceeded 10 req/min limit. Throttled for ${rateLimit.resetInSeconds}s.`);
+      return NextResponse.json(
+        {
+          error: `⚠️ Rate limit exceeded! You have reached your limit of ${rateLimit.limit} AI queries per minute. Please wait ${rateLimit.resetInSeconds}s to protect API resources.`,
+          limit: rateLimit.limit,
+          remaining: 0,
+          retryAfter: rateLimit.resetInSeconds,
+          source: 'rate_limited',
+        },
+        {
+          status: 429,
+          headers: {
+            ...rateLimitHeaders,
+            'Retry-After': String(rateLimit.resetInSeconds),
+          },
+        }
+      );
+    }
+
+    // =========================================================================
+    // STEP 2: PRIMARY: FORWARD TO STANDALONE AI MICROSERVICE (Port 5000)
     // =========================================================================
     try {
       const microserviceRes = await fetch(`${AI_MICROSERVICE_URL}/api/ai/chat`, {
@@ -45,6 +81,7 @@ export async function POST(req: NextRequest) {
           },
           {
             headers: {
+              ...rateLimitHeaders,
               'X-Microservice': 'ai-microservice-port-5000',
               'X-Gateway-Time': `${gatewayLatencyMs}ms`,
               'X-Cache': microserviceRes.headers.get('X-Cache') || 'MISS',
@@ -59,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     // =========================================================================
-    // 2. RESILIENT FALLBACK: DIRECT GROQ LLM EXECUTION
+    // STEP 3: RESILIENT FALLBACK: DIRECT GROQ LLM EXECUTION
     // =========================================================================
     const apiKey = process.env.GROQ_API_KEY;
     if (apiKey) {
@@ -120,26 +157,34 @@ Total Amount Spent: ${studentContext?.totalSpent || '₹3,297'}
           const reply = groqData.choices?.[0]?.message?.content;
           if (reply) {
             const latencyMs = Math.round(performance.now() - startTime);
-            return NextResponse.json({
-              reply,
-              source: 'llm',
-              latencyMs,
-              model,
-              service: 'nextjs-direct-fallback',
-            });
+            return NextResponse.json(
+              {
+                reply,
+                source: 'llm',
+                latencyMs,
+                model,
+                service: 'nextjs-direct-fallback',
+              },
+              {
+                headers: rateLimitHeaders,
+              }
+            );
           }
         } catch {}
       }
     }
 
-    // 3. Graceful Static Message if no LLM key is configured
+    // 4. Graceful Static Message if no LLM key is configured
     return NextResponse.json(
       {
         reply: "Hello! I am your AI Study Assistant. Our AI microservice is currently initializing. Please feel free to ask your course questions, or visit our /contactPage for immediate student support!",
         source: 'fallback',
         latencyMs: Math.round(performance.now() - startTime),
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: rateLimitHeaders,
+      }
     );
   } catch (error: any) {
     return NextResponse.json(

@@ -1413,7 +1413,7 @@ function AIAssistant() {
     }
   };
 
-  // Start fresh new conversation (ChatGPT-style New Chat)
+  // Start fresh new conversation
   const handleNewChat = () => {
     const newId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setActiveConversationId(newId);
@@ -1473,10 +1473,9 @@ function AIAssistant() {
     const textToSend = (customMsg || inputMessage).trim();
     if (!textToSend || isAiLoading) return;
 
-    // Generate title on first user message if activeTitle is New Chat
     let currentTitle = activeTitle;
     if (activeTitle === "New Chat" || activeTitle === "Untitled Chat") {
-      currentTitle = textToSend.length > 36 ? `${textToSend.slice(0, 36)}...` : textToSend;
+      currentTitle = textToSend.length > 34 ? `${textToSend.slice(0, 34)}...` : textToSend;
       setActiveTitle(currentTitle);
     }
 
@@ -1514,41 +1513,9 @@ function AIAssistant() {
         enrolledSince: "January 2024",
         totalSpent: "₹3,297",
         courses: [
-          {
-            title: "React Masterclass",
-            progress: "75%",
-            completedLessons: 12,
-            totalLessons: 16,
-            remainingLessons: 4,
-            instructor: "John Doe",
-            status: "In Progress",
-            certificateEarned: false,
-          },
-          {
-            title: "Next.js Fundamentals",
-            progress: "100%",
-            completedLessons: 20,
-            totalLessons: 20,
-            remainingLessons: 0,
-            instructor: "Jane Smith",
-            status: "Completed",
-            certificateEarned: true,
-          },
-          {
-            title: "Python Data Science",
-            progress: "30%",
-            completedLessons: 6,
-            totalLessons: 20,
-            remainingLessons: 14,
-            instructor: "Alex Rivera",
-            status: "In Progress",
-            certificateEarned: false,
-          },
-        ],
-        purchases: [
-          { course: "React Masterclass", price: "₹999", date: "Jan 15, 2024", invoiceId: "INV-2024-001" },
-          { course: "Next.js Fundamentals", price: "₹1,499", date: "Jan 28, 2024", invoiceId: "INV-2024-002" },
-          { course: "Python Data Science", price: "₹799", date: "Feb 02, 2024", invoiceId: "INV-2024-003" },
+          { title: "React Masterclass", progress: "75%", instructor: "John Doe", status: "In Progress" },
+          { title: "Next.js Fundamentals", progress: "100%", instructor: "Jane Smith", status: "Completed" },
+          { title: "Python Data Science", progress: "30%", instructor: "Alex Rivera", status: "In Progress" },
         ],
       };
 
@@ -1613,265 +1580,268 @@ function AIAssistant() {
   };
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-row animate-in fade-in duration-500 bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden relative">
+    <div className="space-y-4 animate-in fade-in duration-300">
+      {/* INTEGRATED CHAT CONTAINER */}
+      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm overflow-hidden flex flex-row h-[calc(100vh-185px)] min-h-[560px] relative">
 
-      {/* MOBILE BACKDROP OVERLAY */}
-      {isDrawerOpen && (
+        {/* MOBILE BACKDROP OVERLAY */}
+        {isDrawerOpen && (
+          <div
+            onClick={() => setIsDrawerOpen(false)}
+            className="absolute inset-0 bg-slate-900/30 backdrop-blur-2xs z-30 lg:hidden"
+          />
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* 1. SEAMLESS LIGHT CONVERSATIONS SIDEBAR                            */}
+        {/* ------------------------------------------------------------------ */}
         <div
-          onClick={() => setIsDrawerOpen(false)}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 lg:hidden"
-        />
-      )}
-
-      {/* ---------------------------------------------------------------------- */}
-      {/* 1. CHATGPT-STYLE CONVERSATIONS SIDEBAR (RESPONSIVE DRAWER ON MOBILE)   */}
-      {/* ---------------------------------------------------------------------- */}
-      <div
-        className={`w-72 bg-slate-900 text-slate-200 border-r border-slate-800 flex flex-col z-50 transition-all duration-300 ${
-          isDrawerOpen
-            ? "fixed inset-y-0 left-0 shadow-2xl flex"
-            : "hidden lg:flex"
-        }`}
-      >
-        {/* Sidebar Header: New Chat Button */}
-        <div className="p-3.5 border-b border-slate-800 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
-                <Database className="w-4 h-4" />
+          className={`w-64 sm:w-72 bg-gray-50/90 border-r border-gray-200/80 flex flex-col z-40 transition-all duration-300 shrink-0 ${
+            isDrawerOpen
+              ? "absolute inset-y-0 left-0 shadow-xl flex bg-white"
+              : "hidden lg:flex"
+          }`}
+        >
+          {/* Top: New Chat Button */}
+          <div className="p-3.5 border-b border-gray-200/70 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-200">
+                  <Database className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">Chat History</span>
               </div>
-              <span className="text-xs font-bold text-white uppercase tracking-wider">Chat History</span>
+              {isDrawerOpen && (
+                <button
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="lg:hidden text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-            {isDrawerOpen && (
-              <button
-                onClick={() => setIsDrawerOpen(false)}
-                className="lg:hidden text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+            <button
+              onClick={handleNewChat}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-2.5 px-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm shadow-orange-200 transition active:scale-98"
+            >
+              <Plus className="w-4 h-4" /> + New Chat
+            </button>
+          </div>
+
+          {/* Conversations Scrollable List */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+            <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between">
+              <span>Saved Sessions ({conversations.length})</span>
+              <span className="text-emerald-600 font-mono text-[9px] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> MongoDB
+              </span>
+            </div>
+
+            {conversations.length === 0 ? (
+              <div className="p-4 text-center text-gray-400 text-xs">
+                <MessageCircle className="w-6 h-6 mx-auto mb-1.5 text-gray-300" />
+                <p className="font-medium text-gray-500">No past chats yet</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Start chatting to auto-save conversations.</p>
+              </div>
+            ) : (
+              conversations.map((conv) => {
+                const isActive = conv.conversationId === activeConversationId;
+                return (
+                  <div
+                    key={conv.conversationId}
+                    onClick={() => loadConversation(conv.conversationId, conv.title)}
+                    className={`group w-full p-2.5 rounded-xl text-left cursor-pointer transition flex items-center justify-between gap-2 text-xs ${
+                      isActive
+                        ? "bg-orange-50 text-orange-700 border border-orange-200 shadow-2xs font-semibold"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-orange-500" : "text-gray-400"}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs">{conv.title}</p>
+                        <p className={`text-[10px] flex items-center gap-1 mt-0.5 ${isActive ? "text-orange-500/80" : "text-gray-400"}`}>
+                          <Clock className="w-2.5 h-2.5" /> {formatRelativeTime(conv.updatedAt)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.conversationId)}
+                      title="Delete Conversation"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
 
-          <button
-            onClick={handleNewChat}
-            className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white py-2.5 px-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm shadow-orange-500/30 transition active:scale-98"
-          >
-            <Plus className="w-4 h-4" /> + New Chat
-          </button>
-        </div>
-
-        {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-            <span>Saved Sessions ({conversations.length})</span>
-            <span className="text-emerald-400 font-mono text-[9px] flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> MongoDB
-            </span>
-          </div>
-
-          {conversations.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 text-xs">
-              <MessageCircle className="w-6 h-6 mx-auto mb-1.5 text-slate-600" />
-              <p>No past chats yet.</p>
-              <p className="text-[10px] text-slate-600 mt-0.5">Start chatting to auto-save conversations.</p>
-            </div>
-          ) : (
-            conversations.map((conv) => {
-              const isActive = conv.conversationId === activeConversationId;
-              return (
-                <div
-                  key={conv.conversationId}
-                  onClick={() => loadConversation(conv.conversationId, conv.title)}
-                  className={`group w-full p-2.5 rounded-xl text-left cursor-pointer transition flex items-center justify-between gap-2 text-xs ${
-                    isActive
-                      ? "bg-slate-800 text-white border border-orange-500/40 shadow-xs"
-                      : "text-slate-300 hover:bg-slate-800/60 hover:text-white border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-orange-400" : "text-slate-500"}`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate text-xs">{conv.title}</p>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-2.5 h-2.5" /> {formatRelativeTime(conv.updatedAt)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={(e) => handleDeleteConversation(e, conv.conversationId)}
-                    title="Delete Conversation"
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-700/60 rounded-md transition shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Sidebar Footer */}
-        {conversations.length > 0 && (
-          <div className="p-2.5 border-t border-slate-800">
-            <button
-              onClick={handleClearAllConversations}
-              className="w-full py-1.5 px-3 text-[11px] text-slate-400 hover:text-red-400 hover:bg-slate-800/60 rounded-lg transition flex items-center justify-center gap-1.5"
-            >
-              <Trash2 className="w-3 h-3" /> Clear All History
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ---------------------------------------------------------------------- */}
-      {/* 2. MAIN CHAT AREA                                                      */}
-      {/* ---------------------------------------------------------------------- */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
-        {/* Header */}
-        <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50/70 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* Mobile Drawer Toggle Button */}
-            <button
-              onClick={() => setIsDrawerOpen(true)}
-              className="lg:hidden p-2 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition shrink-0"
-              title="Open Conversation History"
-            >
-              <PanelLeft className="w-4 h-4" />
-            </button>
-
-            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-tr from-orange-500 to-amber-500 rounded-xl flex items-center justify-center text-white shadow-sm shadow-orange-200 shrink-0">
-              <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-gray-900 text-xs sm:text-sm truncate max-w-[140px] sm:max-w-xs md:max-w-md">
-                  {activeTitle}
-                </h3>
-                <span className="bg-emerald-100 text-emerald-700 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                  <Database className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-600" /> Atlas
-                </span>
-                <span className="bg-blue-100 text-blue-700 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full items-center gap-1 shrink-0 hidden md:inline-flex">
-                  <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-500" /> 10 req/min
-                </span>
-              </div>
-              <p className="text-[10px] sm:text-[11px] text-gray-400 truncate hidden sm:block">
-                Persistent Chat Sessions in MongoDB Atlas (Concept #11) & Redis Rate Limiting (Concept #28)
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleNewChat}
-              title="Start a fresh chat"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-xl transition border border-orange-200"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Chat</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Message Thread */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
-          {isHistoryLoading && (
-            <div className="flex justify-center items-center py-4 text-xs text-emerald-600 gap-2 font-medium">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading MongoDB session...
-            </div>
-          )}
-
-          {chatHistory.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-2.5`}>
-              {msg.role === "ai" && (
-                <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="w-4 h-4" />
-                </div>
-              )}
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-br-sm shadow-sm"
-                    : "bg-white text-gray-800 border border-gray-100 rounded-tl-sm shadow-xs"
-                }`}
+          {/* Footer */}
+          {conversations.length > 0 && (
+            <div className="p-2.5 border-t border-gray-200/70 bg-gray-50/50">
+              <button
+                onClick={handleClearAllConversations}
+                className="w-full py-1.5 px-3 text-[11px] text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center justify-center gap-1.5"
               >
-                {msg.text}
-                {msg.role === "ai" && msg.latencyMs !== undefined && (
-                  <div className="mt-2.5 pt-2 border-t border-gray-100/80 flex items-center gap-1.5 text-[11px]">
-                    {msg.source === "cache" ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 font-semibold shadow-2xs">
-                        ⚡ {msg.latencyMs}ms (Redis Cache HIT)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60 font-medium shadow-2xs">
-                        ⏱️ {msg.latencyMs}ms (Groq LLM)
-                      </span>
-                    )}
-                    <span className="text-[10px] text-gray-400 font-mono">| Saved to MongoDB</span>
+                <Trash2 className="w-3 h-3" /> Clear All History
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* 2. RIGHT CHAT PANEL                                                */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
+          {/* Header */}
+          <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Mobile Drawer Toggle Button */}
+              <button
+                onClick={() => setIsDrawerOpen(true)}
+                className="lg:hidden p-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition shrink-0"
+                title="Open Conversation History"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-tr from-orange-500 to-amber-500 rounded-xl flex items-center justify-center text-white shadow-sm shadow-orange-200 shrink-0">
+                <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm truncate max-w-[140px] sm:max-w-xs md:max-w-md">
+                    {activeTitle}
+                  </h3>
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                    <Database className="w-2.5 h-2.5 text-emerald-600" /> Atlas
+                  </span>
+                  <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full items-center gap-1 shrink-0 hidden md:inline-flex">
+                    <ShieldCheck className="w-2.5 h-2.5 text-blue-500" /> 10 req/min
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 truncate hidden sm:block">
+                  Persistent Chat Sessions in MongoDB Atlas (Concept #11) & Redis Rate Limiting (Concept #28)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleNewChat}
+                title="Start a fresh chat"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-xl transition border border-orange-200 shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">New Chat</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Message Thread */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
+            {isHistoryLoading && (
+              <div className="flex justify-center items-center py-4 text-xs text-emerald-600 gap-2 font-medium">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading MongoDB session...
+              </div>
+            )}
+
+            {chatHistory.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-2.5`}>
+                {msg.role === "ai" && (
+                  <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4" />
                   </div>
                 )}
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    msg.role === "user"
+                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-br-sm shadow-sm"
+                      : "bg-white text-gray-800 border border-gray-200/80 rounded-tl-sm shadow-xs"
+                  }`}
+                >
+                  {msg.text}
+                  {msg.role === "ai" && msg.latencyMs !== undefined && (
+                    <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-[11px]">
+                      {msg.source === "cache" ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 font-semibold shadow-2xs">
+                          ⚡ {msg.latencyMs}ms (Redis Cache HIT)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60 font-medium shadow-2xs">
+                          ⏱️ {msg.latencyMs}ms (Groq LLM)
+                        </span>
+                      )}
+                      <span className="text-[10px] text-gray-400 font-mono">| Saved to MongoDB</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {/* Typing Indicator */}
-          {isAiLoading && (
-            <div className="flex justify-start gap-2.5 items-center">
-              <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4" />
+            {/* Typing Indicator */}
+            {isAiLoading && (
+              <div className="flex justify-start gap-2.5 items-center">
+                <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="bg-white border border-gray-200/80 px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm text-gray-500 flex items-center gap-2 shadow-xs">
+                  <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
+                  <span className="text-xs">AI is thinking...</span>
+                </div>
               </div>
-              <div className="bg-white border border-gray-100 px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm text-gray-500 flex items-center gap-2 shadow-xs">
-                <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
-                <span className="text-xs">AI is thinking...</span>
-              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick Suggestion Prompts */}
+          {chatHistory.length <= 2 && !isAiLoading && (
+            <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto custom-scrollbar">
+              <span className="text-[11px] text-gray-400 font-medium shrink-0">Try asking:</span>
+              {quickPrompts.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSendMessage(prompt)}
+                  className="shrink-0 text-xs bg-gray-50 hover:bg-orange-50 hover:text-orange-600 text-gray-600 px-3 py-1.5 rounded-full border border-gray-200 hover:border-orange-200 transition"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           )}
 
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Quick Suggestion Prompts */}
-        {chatHistory.length <= 2 && !isAiLoading && (
-          <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto custom-scrollbar">
-            <span className="text-[11px] text-gray-400 font-medium shrink-0">Try asking:</span>
-            {quickPrompts.map((prompt, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSendMessage(prompt)}
-                className="shrink-0 text-xs bg-gray-50 hover:bg-orange-50 hover:text-orange-600 text-gray-600 px-3 py-1.5 rounded-full border border-gray-200 hover:border-orange-200 transition"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Input Bar */}
-        <div className="p-3 sm:p-4 border-t border-gray-100 bg-white">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="flex gap-2"
-          >
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={isAiLoading ? "Waiting for AI..." : "Type your message or ask a question..."}
-              disabled={isAiLoading}
-              className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition disabled:bg-gray-50"
-            />
-            <button
-              type="submit"
-              disabled={!inputMessage.trim() || isAiLoading}
-              className="px-4 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-orange-200 shrink-0"
+          {/* Input Bar */}
+          <div className="p-3 sm:p-4 border-t border-gray-100 bg-white">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
+              className="flex gap-2"
             >
-              {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </button>
-          </form>
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder={isAiLoading ? "Waiting for AI..." : "Type your message or ask a question..."}
+                disabled={isAiLoading}
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition disabled:bg-gray-50"
+              />
+              <button
+                type="submit"
+                disabled={!inputMessage.trim() || isAiLoading}
+                className="px-4 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-orange-200 shrink-0"
+              >
+                {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>

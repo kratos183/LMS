@@ -1375,7 +1375,7 @@ function AIAssistant() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch list of saved conversations from MongoDB Atlas on mount
   const fetchConversationList = async () => {
@@ -1464,8 +1464,11 @@ function AIAssistant() {
     init();
   }, []);
 
+  // Isolate scroll ONLY to the message container to prevent whole page / header from jumping
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [chatHistory, isAiLoading]);
 
   // Send message
@@ -1580,15 +1583,15 @@ function AIAssistant() {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-300">
+    <div className="space-y-4">
       {/* INTEGRATED CHAT CONTAINER */}
-      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm overflow-hidden flex flex-row h-[calc(100vh-185px)] min-h-[560px] relative">
+      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm overflow-hidden flex flex-row h-[620px] max-h-[calc(100vh-200px)] min-h-[500px] relative">
 
         {/* MOBILE BACKDROP OVERLAY */}
         {isDrawerOpen && (
           <div
             onClick={() => setIsDrawerOpen(false)}
-            className="absolute inset-0 bg-slate-900/30 backdrop-blur-2xs z-30 lg:hidden"
+            className="absolute inset-0 bg-slate-900/20 backdrop-blur-2xs z-30 lg:hidden"
           />
         )}
 
@@ -1596,20 +1599,20 @@ function AIAssistant() {
         {/* 1. SEAMLESS LIGHT CONVERSATIONS SIDEBAR                            */}
         {/* ------------------------------------------------------------------ */}
         <div
-          className={`w-64 sm:w-72 bg-gray-50/90 border-r border-gray-200/80 flex flex-col z-40 transition-all duration-300 shrink-0 ${
+          className={`w-64 sm:w-72 bg-gray-50/90 border-r border-gray-200/80 flex flex-col shrink-0 transition-all duration-200 ${
             isDrawerOpen
-              ? "absolute inset-y-0 left-0 shadow-xl flex bg-white"
-              : "hidden lg:flex"
+              ? "absolute inset-y-0 left-0 shadow-2xl flex bg-white z-40"
+              : "hidden lg:flex relative z-10"
           }`}
         >
           {/* Top: New Chat Button */}
           <div className="p-3.5 border-b border-gray-200/70 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-200">
+                <div className="w-6 h-6 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-200">
                   <Database className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">Chat History</span>
+                <span className="text-xs font-bold text-gray-800 tracking-wider">Chat History</span>
               </div>
               {isDrawerOpen && (
                 <button
@@ -1696,9 +1699,9 @@ function AIAssistant() {
         {/* ------------------------------------------------------------------ */}
         {/* 2. RIGHT CHAT PANEL                                                */}
         {/* ------------------------------------------------------------------ */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className="flex-1 flex flex-col min-w-0 h-full bg-white relative">
           {/* Header */}
-          <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex items-center justify-between gap-3">
+          <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Mobile Drawer Toggle Button */}
               <button
@@ -1719,10 +1722,10 @@ function AIAssistant() {
                     {activeTitle}
                   </h3>
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                    <Database className="w-2.5 h-2.5 text-emerald-600" /> Atlas
+                    <Database className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-600" /> Atlas
                   </span>
                   <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full items-center gap-1 shrink-0 hidden md:inline-flex">
-                    <ShieldCheck className="w-2.5 h-2.5 text-blue-500" /> 10 req/min
+                    <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-500" /> 10 req/min
                   </span>
                 </div>
                 <p className="text-[10px] sm:text-[11px] text-gray-400 truncate hidden sm:block">
@@ -1744,7 +1747,7 @@ function AIAssistant() {
           </div>
 
           {/* Message Thread */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
             {isHistoryLoading && (
               <div className="flex justify-center items-center py-4 text-xs text-emerald-600 gap-2 font-medium">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading MongoDB session...
@@ -1796,13 +1799,11 @@ function AIAssistant() {
                 </div>
               </div>
             )}
-
-            <div ref={chatEndRef} />
           </div>
 
           {/* Quick Suggestion Prompts */}
           {chatHistory.length <= 2 && !isAiLoading && (
-            <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto custom-scrollbar">
+            <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto custom-scrollbar shrink-0">
               <span className="text-[11px] text-gray-400 font-medium shrink-0">Try asking:</span>
               {quickPrompts.map((prompt, idx) => (
                 <button
@@ -1817,7 +1818,7 @@ function AIAssistant() {
           )}
 
           {/* Input Bar */}
-          <div className="p-3 sm:p-4 border-t border-gray-100 bg-white">
+          <div className="p-3 sm:p-4 border-t border-gray-100 bg-white shrink-0">
             <form
               onSubmit={(e) => {
                 e.preventDefault();

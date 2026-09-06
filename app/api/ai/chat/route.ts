@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rate-limiter';
+import { getDatabase } from '@/lib/mongodb';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,10 +14,49 @@ const CANDIDATE_MODELS = [
 ];
 
 /**
+ * Helper to persist AI chat conversation pairs to MongoDB Atlas (Concept #11: NoSQL)
+ */
+async function persistChatToMongo(
+  studentEmail: string,
+  userText: string,
+  aiText: string,
+  metadata: { latencyMs?: number; source?: string; model?: string }
+) {
+  try {
+    const db = await getDatabase();
+    if (db) {
+      const collection = db.collection('ai_chat_history');
+      await collection.insertMany([
+        {
+          studentEmail,
+          role: 'user',
+          text: userText,
+          timestamp: new Date().toISOString(),
+          createdAt: new Date(),
+        },
+        {
+          studentEmail,
+          role: 'ai',
+          text: aiText,
+          latencyMs: metadata.latencyMs,
+          source: metadata.source,
+          model: metadata.model,
+          timestamp: new Date().toISOString(),
+          createdAt: new Date(),
+        },
+      ]);
+    }
+  } catch (err: any) {
+    console.warn('[MongoDB Chat Persist Warning]:', err.message);
+  }
+}
+
+/**
  * Next.js AI Assistant API Gateway
  * 1. Rate Limiting (Concept #28): 10 AI queries / minute per client (Redis Sliding Window)
  * 2. Primary Route (Concept #26): Standalone AI Microservice on Port 5000 with Redis Caching
- * 3. Resilient Direct Fallback: Direct Groq LLM inference on connection drop
+ * 3. Polyglot Persistence (Concept #11): Asynchronously persists conversations to MongoDB Atlas
+ * 4. Resilient Direct Fallback: Direct Groq LLM inference on connection drop
  */
 export async function POST(req: NextRequest) {
   const startTime = performance.now();
@@ -24,12 +64,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { messages, studentContext } = body;
+    const lastUserMessage = messages?.[messages.length - 1]?.text || '';
+    const studentEmail = studentContext?.email || 'ethan@example.com';
 
     // =========================================================================
     // STEP 1: RATE LIMITING DEFENSE (Concept #28 - 10 queries/min limit)
     // =========================================================================
     const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || '';
-    const identifier = studentContext?.email || rawIp || 'client_default';
+    const identifier = studentEmail || rawIp || 'client_default';
 
     const rateLimit = await checkRateLimit(identifier, 10, 60);
 
@@ -74,6 +116,15 @@ export async function POST(req: NextRequest) {
         const data = await microserviceRes.json();
         const gatewayLatencyMs = Math.round(performance.now() - startTime);
 
+        // Save to MongoDB asynchronously (non-blocking)
+        if (data.reply) {
+          persistChatToMongo(studentEmail, lastUserMessage, data.reply, {
+            latencyMs: data.latencyMs,
+            source: data.source,
+            model: data.model,
+          }).catch(() => {});
+        }
+
         return NextResponse.json(
           {
             ...data,
@@ -106,7 +157,7 @@ You are speaking directly with the currently authenticated student. You have rea
 
 === CURRENT STUDENT PROFILE ===
 Name: ${studentContext?.name || 'Ethan Hunt'}
-Email: ${studentContext?.email || 'ethan@example.com'}
+Email: ${studentEmail}
 Enrolled Since: ${studentContext?.enrolledSince || 'January 2024'}
 
 === ENROLLED COURSES & PROGRESS ===
@@ -157,6 +208,14 @@ Total Amount Spent: ${studentContext?.totalSpent || '₹3,297'}
           const reply = groqData.choices?.[0]?.message?.content;
           if (reply) {
             const latencyMs = Math.round(performance.now() - startTime);
+
+            // Persist to MongoDB
+            persistChatToMongo(studentEmail, lastUserMessage, reply, {
+              latencyMs,
+              source: 'llm',
+              model,
+            }).catch(() => {});
+
             return NextResponse.json(
               {
                 reply,

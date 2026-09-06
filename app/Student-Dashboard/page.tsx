@@ -7,7 +7,8 @@ import {
   Award, Star, Bell, CreditCard, User, Settings, MessageSquare,
   FileText, Bot, LogOut, Download, Share2, CheckCircle,
   Search, Menu, Moon, Sun, Globe, Mail, Trash2, Edit3, Send,
-  Loader2, Sparkles, RotateCcw, Radio, Zap, ShieldCheck
+  Loader2, Sparkles, RotateCcw, Radio, Zap, ShieldCheck,
+  Database, Activity, RefreshCw, Layers, ShieldAlert, Server, HardDrive, Filter, Eye, PlusCircle
 } from "lucide-react";
 import Navbar from "../component/navbar";
 
@@ -33,6 +34,28 @@ export default function StudentDashboard() {
     { id: "notif_3", title: "Payment Successful", desc: "Receipt for Next.js Fundamentals purchase.", time: "3d ago", read: true, type: "PAYMENT" },
     { id: "notif_4", title: "Assignment Graded", desc: "You scored 9.5/10 on Redux Toolkit Milestone.", time: "5d ago", read: true, type: "ASSIGNMENT" },
   ]);
+
+  // Concept #11: Telemetry Logger for MongoDB Atlas User Activity Logs
+  const logStudentActivity = async (action: string, details?: any) => {
+    try {
+      await fetch('/api/logs/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          studentEmail: 'ethan@example.com',
+          details: details || {},
+        }),
+      });
+    } catch {
+      // Graceful telemetry fallback
+    }
+  };
+
+  // Automatically record tab navigation events to MongoDB Atlas
+  useEffect(() => {
+    logStudentActivity('VIEW_TAB', { tab: activeTab });
+  }, [activeTab]);
 
   // Connect to Real-Time WebSocket Server (Port 4000 / Nginx Proxy)
   useEffect(() => {
@@ -150,6 +173,7 @@ export default function StudentDashboard() {
     { id: "discussions", label: "Discussions", icon: MessageSquare },
     { id: "assignments", label: "Assignments", icon: FileText },
     { id: "ai", label: "AI Assistant", icon: Bot },
+    { id: "logs", label: "Audit Logs (MongoDB)", icon: Database },
   ];
 
   /* -------------------------------------------------------------------------- */
@@ -929,6 +953,264 @@ export default function StudentDashboard() {
     </div>
   );
 
+  const ActivityLogs = () => {
+    const [logs, setLogs] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [filterAction, setFilterAction] = useState<string>("ALL");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [customEvent, setCustomEvent] = useState("");
+    const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+    const fetchLogs = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/logs/activity?limit=50');
+        const data = await res.json();
+        if (data.logs) {
+          setLogs(data.logs);
+        }
+      } catch (err) {
+        console.error('Failed to fetch activity logs:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchLogs();
+    }, []);
+
+    const handleCreateCustomLog = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!customEvent.trim() || isSubmitting) return;
+
+      setIsSubmitting(true);
+      try {
+        await fetch('/api/logs/activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'CUSTOM_STUDENT_ACTION',
+            studentEmail: 'ethan@example.com',
+            details: {
+              customNote: customEvent.trim(),
+              sessionId: 'sess_' + Math.random().toString(36).substring(2, 9),
+              deviceType: 'Desktop Web Browser',
+            },
+            metadata: {
+              triggeredVia: 'Dashboard UI Concept #11',
+              timestampLocal: new Date().toLocaleTimeString(),
+            }
+          }),
+        });
+        setCustomEvent("");
+        await fetchLogs();
+      } catch (err) {
+        console.error('Failed to log event:', err);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    const filteredLogs = filterAction === "ALL"
+      ? logs
+      : logs.filter(l => l.action === filterAction);
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        {/* TOP ARCHITECTURE COMPARISON BANNER (Concept #11) */}
+        <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-950 rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-emerald-500/20">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-500/20 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-emerald-400" /> Concept #11: SQL vs NoSQL Polyglot Persistence
+                </span>
+                <span className="bg-amber-500/20 text-amber-300 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-500/30">
+                  Phase 3
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+                MongoDB Atlas Telemetry & Audit Stream
+              </h2>
+              <p className="text-slate-300 text-sm leading-relaxed">
+                PostgreSQL handles structured ACID relational data (Users, Courses, Payments), while MongoDB Atlas ingests high-throughput, unstructured documents (AI conversations & audit activity streams) with zero schema migrations.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <button
+                onClick={fetchLogs}
+                disabled={isLoading}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} /> Refresh Stream
+              </button>
+            </div>
+          </div>
+
+          {/* DUAL DATABASE ARCHITECTURE TILES */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-800">
+            <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/30">
+                <Server className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400">Structured Relational (PostgreSQL)</h4>
+                <p className="text-xs text-slate-300 mt-0.5">Users, Course Catalogs, Razorpay Payments, Enrollments (ACID Transactions).</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                <HardDrive className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Unstructured Document (MongoDB Atlas)</h4>
+                <p className="text-xs text-slate-300 mt-0.5">AI Chat History, Clickstreams, Navigation Audits, Video Telemetry (BASE Model).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* LOG WRITER FORM */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+          <h3 className="text-base font-bold text-gray-900 mb-1 flex items-center gap-2">
+            <PlusCircle className="w-4 h-4 text-orange-500" /> Dispatch Test Event to MongoDB Atlas
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Type any test event payload or note. It will be written directly into the <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-800 font-mono">user_activity_logs</code> collection.
+          </p>
+
+          <form onSubmit={handleCreateCustomLog} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              value={customEvent}
+              onChange={(e) => setCustomEvent(e.target.value)}
+              placeholder="e.g. Completed Chapter 4 Quiz or Clicked Resume Video button..."
+              className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition"
+            />
+            <button
+              type="submit"
+              disabled={!customEvent.trim() || isSubmitting}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-40 shadow-sm shadow-orange-200 shrink-0"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />} Record to MongoDB
+            </button>
+          </form>
+        </div>
+
+        {/* LOGS LISTING */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+            <div>
+              <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                <Activity className="w-5 h-5 text-emerald-500" /> Audit Log Stream
+                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2.5 py-0.5 rounded-full">
+                  {filteredLogs.length} Documents
+                </span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">Live unstructured JSON records queried from MongoDB Atlas</p>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+              {["ALL", "VIEW_TAB", "AI_QUERY", "CUSTOM_STUDENT_ACTION", "SIMULATION_PUSH"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilterAction(f)}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition shrink-0 ${
+                    filterAction === f
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+              <p className="text-sm font-medium">Fetching real-time documents from MongoDB Atlas...</p>
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="py-12 text-center text-gray-500 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+              <Database className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-gray-700">No activity logs found for this filter</p>
+              <p className="text-xs text-gray-400 mt-1">Navigate across tabs or submit a test event above to generate MongoDB documents.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredLogs.map((log: any, idx: number) => {
+                const isExpanded = expandedLogId === (log._id || String(idx));
+                const actionColor =
+                  log.action === "AI_QUERY" ? "bg-amber-100 text-amber-800 border-amber-200" :
+                  log.action === "VIEW_TAB" ? "bg-blue-100 text-blue-800 border-blue-200" :
+                  log.action === "CUSTOM_STUDENT_ACTION" ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                  "bg-purple-100 text-purple-800 border-purple-200";
+
+                return (
+                  <div
+                    key={log._id || idx}
+                    className="p-4 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/20 transition group"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-md border ${actionColor}`}>
+                          {log.action}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-800">
+                          {log.studentEmail || "ethan@example.com"}
+                        </span>
+                        {log.ip && (
+                          <span className="text-[11px] text-gray-400 hidden md:inline-block font-mono">
+                            IP: {log.ip}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-400">
+                          {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Recent'}
+                        </span>
+                        <button
+                          onClick={() => setExpandedLogId(isExpanded ? null : (log._id || String(idx)))}
+                          className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> {isExpanded ? "Hide JSON" : "Inspect"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Preview */}
+                    {log.details && (
+                      <p className="text-xs text-gray-600 mt-2 font-mono bg-gray-50/80 px-3 py-1.5 rounded-lg truncate">
+                        {JSON.stringify(log.details)}
+                      </p>
+                    )}
+
+                    {/* Expandable JSON Inspector */}
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 animate-in fade-in duration-200">
+                        <div className="bg-slate-950 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto shadow-inner">
+                          <div className="text-slate-400 mb-1 text-[10px] uppercase font-bold tracking-wider">// MongoDB BSON Document</div>
+                          <pre>{JSON.stringify(log, null, 2)}</pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
 
 
   /* -------------------------------------------------------------------------- */
@@ -1035,6 +1317,7 @@ export default function StudentDashboard() {
               {activeTab === "discussions" && <Discussions />}
               {activeTab === "assignments" && <Assignments />}
               {activeTab === "ai" && <AIAssistant />}
+              {activeTab === "logs" && <ActivityLogs />}
             </div>
           </main>
 
@@ -1077,11 +1360,39 @@ function AIAssistant() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(initialChat);
   const [inputMessage, setInputMessage] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Concept #11: Fetch persistent chat history from MongoDB Atlas on mount
+  useEffect(() => {
+    const loadMongoHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const res = await fetch('/api/ai/history?email=ethan@example.com');
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setChatHistory(data.messages);
+        }
+      } catch (err) {
+        console.warn('Could not load MongoDB chat history:', err);
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    };
+
+    loadMongoHistory();
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isAiLoading]);
+
+  const handleClearChat = async () => {
+    try {
+      await fetch('/api/ai/history?email=ethan@example.com', { method: 'DELETE' });
+    } catch {}
+    setChatHistory(initialChat);
+  };
 
   const handleSendMessage = async (customMsg?: string) => {
     const textToSend = (customMsg || inputMessage).trim();
@@ -1188,16 +1499,19 @@ function AIAssistant() {
               <span className="bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Sparkles className="w-3 h-3" /> Groq AI Fast
               </span>
+              <span className="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Database className="w-3 h-3 text-emerald-600" /> MongoDB Atlas
+              </span>
               <span className="bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 hidden sm:inline-flex">
                 <ShieldCheck className="w-3 h-3 text-blue-500" /> 10 queries/min
               </span>
             </div>
-            <p className="text-[11px] text-gray-500">Protected by Redis Sliding Window Rate Limiting (Concept #28)</p>
+            <p className="text-[11px] text-gray-500">Persistent Chat History in MongoDB Atlas (Concept #11) & Redis Rate Limiting (Concept #28)</p>
           </div>
         </div>
         <button
-          onClick={() => setChatHistory(initialChat)}
-          title="Reset Chat"
+          onClick={handleClearChat}
+          title="Reset Chat and delete from MongoDB"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition border border-gray-200 hover:border-orange-200"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -1207,6 +1521,12 @@ function AIAssistant() {
 
       {/* Message Thread */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gray-50/40 custom-scrollbar">
+        {isHistoryLoading && (
+          <div className="flex justify-center items-center py-2 text-xs text-emerald-600 gap-1.5 font-medium">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading MongoDB chat history...
+          </div>
+        )}
+
         {chatHistory.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-2.5`}>
             {msg.role === "ai" && (
@@ -1233,6 +1553,7 @@ function AIAssistant() {
                       ⏱️ {msg.latencyMs}ms (Groq LLM)
                     </span>
                   )}
+                  <span className="text-[10px] text-gray-400 font-mono">| Saved to MongoDB</span>
                 </div>
               )}
             </div>

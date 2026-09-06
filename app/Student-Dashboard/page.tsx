@@ -661,29 +661,238 @@ export default function StudentDashboard() {
     </div>
   );
 
-  const Reviews = () => (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">My Reviews</h2>
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-        <div className="flex gap-4 mb-4">
-          <div className="w-12 h-12 bg-gray-200 rounded-full overflow-hidden shrink-0">
-            <img src="https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=100&h=100&fit=crop" alt="Course" className="w-full h-full object-cover" />
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-900">React Masterclass</h3>
-            <div className="flex text-yellow-400 my-1">
-              {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
+  const Reviews = () => {
+    const [reviewsList, setReviewsList] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedCourse, setSelectedCourse] = useState("react-masterclass");
+    const [rating, setRating] = useState(5);
+    const [reviewText, setReviewText] = useState("");
+    const [queryLatency, setQueryLatency] = useState<number | null>(null);
+
+    const availableCourses = [
+      { id: "react-masterclass", title: "React Masterclass & Enterprise Patterns", instructor: "John Doe" },
+      { id: "nextjs-fundamentals", title: "Full Stack Next.js & System Architecture", instructor: "Jane Smith" },
+      { id: "python-data-science", title: "Python for Data Science & Machine Learning", instructor: "Alex Rivera" },
+    ];
+
+    const fetchReviews = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/reviews');
+        const data = await res.json();
+        if (data.reviews) {
+          setReviewsList(data.reviews);
+          setQueryLatency(data.latencyMs);
+        }
+      } catch (err) {
+        console.warn('Failed to load reviews:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchReviews();
+    }, []);
+
+    const handlePostReview = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!reviewText.trim() || isSubmitting) return;
+
+      setIsSubmitting(true);
+      const course = availableCourses.find(c => c.id === selectedCourse);
+
+      try {
+        await fetch('/api/reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            course_id: selectedCourse,
+            course_title: course?.title,
+            instructor_name: course?.instructor, // Denormalized: stored directly in review table
+            student_name: 'Ethan Hunt',
+            student_email: 'ethan@example.com',
+            rating,
+            text: reviewText.trim(),
+          }),
+        });
+        setReviewText("");
+        await fetchReviews();
+      } catch (err) {
+        console.error('Error submitting review:', err);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        {/* ARCHITECTURE BANNER (Concept #20) */}
+        <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border border-orange-200/80 rounded-2xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="bg-orange-500 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Concept #20: Denormalization
+                </span>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  ⚡ 0 SQL JOINs
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-gray-900">
+                Directly Stored Instructor & Course Metadata
+              </h3>
+              <p className="text-xs text-gray-600 max-w-2xl">
+                Instead of joining 3 SQL tables (<code className="font-mono bg-white px-1 rounded border border-gray-200 text-gray-800">reviews ➔ courses ➔ users</code>) on every page load, <code className="font-mono text-orange-600">instructor_name</code> and <code className="font-mono text-orange-600">course_title</code> are stored directly inside the review record for ultra-fast O(1) indexed reads.
+              </p>
             </div>
-            <p className="text-sm text-gray-600 italic">&ldquo;Amazing course. The instructor explains complex concepts very clearly.&rdquo;</p>
+            {queryLatency !== null && (
+              <div className="text-right shrink-0">
+                <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 inline-block">
+                  Read Latency: {queryLatency}ms
+                </span>
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex gap-3 pt-4 border-t border-gray-50">
-          <button className="text-xs flex items-center gap-1 text-gray-500 hover:text-orange-500 transition"><Edit3 className="w-3 h-3" /> Edit Review</button>
-          <button className="text-xs flex items-center gap-1 text-red-400 hover:text-red-600 transition"><Trash2 className="w-3 h-3" /> Delete</button>
+
+        {/* WRITE REVIEW FORM */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+          <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+            <Star className="w-4 h-4 text-orange-500 fill-current" /> Write a Course Review
+          </h3>
+          <form onSubmit={handlePostReview} className="space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Select Course & Instructor</label>
+                <select
+                  value={selectedCourse}
+                  onChange={(e) => setSelectedCourse(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 bg-white"
+                >
+                  {availableCourses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title} (Instructor: {c.instructor})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rating</label>
+                <div className="flex items-center gap-1.5 pt-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setRating(star)}
+                      className="p-1 hover:scale-110 transition"
+                    >
+                      <Star className={`w-5 h-5 ${star <= rating ? "text-amber-400 fill-amber-400" : "text-gray-300"}`} />
+                    </button>
+                  ))}
+                  <span className="text-xs font-bold text-gray-700 ml-2">{rating} / 5 Stars</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Your Review</label>
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                placeholder="Share your learning experience, course structure feedback, or instructor rating..."
+                rows={2}
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={!reviewText.trim() || isSubmitting}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-5 py-2 rounded-xl transition flex items-center gap-2 disabled:opacity-40 shadow-sm shadow-orange-200"
+              >
+                {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Post Review (Stores Denormalized)
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* REVIEWS LISTING */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between pb-1">
+            <h3 className="font-bold text-gray-900 text-sm">
+              Course Reviews Stream ({reviewsList.length})
+            </h3>
+            <button
+              onClick={fetchReviews}
+              className="text-xs text-gray-500 hover:text-orange-600 flex items-center gap-1"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoading ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="py-8 text-center text-gray-400 text-xs flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+              <span>Querying denormalized reviews table...</span>
+            </div>
+          ) : reviewsList.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-gray-100 text-center text-gray-400 text-xs">
+              No reviews found. Be the first to post one above!
+            </div>
+          ) : (
+            reviewsList.map((rev) => (
+              <div key={rev.id || rev._id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3 hover:border-orange-200 transition">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={rev.student_avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"}
+                      alt={rev.student_name}
+                      className="w-10 h-10 rounded-full object-cover border border-gray-100"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{rev.student_name || "Student"}</h4>
+                        <span className="text-[10px] text-gray-400">• {rev.date || "Recently"}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="flex text-amber-400">
+                          {[...Array(5)].map((_, idx) => (
+                            <Star
+                              key={idx}
+                              className={`w-3 h-3 ${idx < (rev.rating || 5) ? "fill-amber-400 text-amber-400" : "text-gray-200"}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[11px] font-bold text-gray-700">{rev.rating || 5}.0</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Denormalized Meta Tags */}
+                  <div className="flex flex-wrap items-center gap-1.5 sm:self-start">
+                    <span className="bg-gray-100 text-gray-700 text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200">
+                      📚 {rev.course_title || rev.course_id}
+                    </span>
+                    <span className="bg-orange-50 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-orange-200">
+                      👨‍🏫 Instructor: {rev.instructor_name || "John Doe"}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs sm:text-sm text-gray-700 leading-relaxed bg-gray-50/50 p-3 rounded-xl border border-gray-100/80">
+                  &ldquo;{rev.text}&rdquo;
+                </p>
+              </div>
+            ))
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const Notifications = () => (
     <div className="space-y-6 animate-in fade-in duration-500">

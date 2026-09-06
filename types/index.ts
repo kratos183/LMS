@@ -43,6 +43,14 @@ export interface Review {
   rating?: number;
   date?: string;
   text: string;
+  // Denormalization (Concept #20)
+  instructor_name?: string;
+  course_id?: string | number;
+  course_title?: string;
+  student_name?: string;
+  student_email?: string;
+  student_avatar?: string;
+  created_at?: string;
 }
 
 export interface CurriculumSection {

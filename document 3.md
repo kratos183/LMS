@@ -130,18 +130,32 @@ CREATE TABLE IF NOT EXISTS public.enrollments (
 
 #### 2. MongoDB Atlas Document Structures
 
-##### Collection: `ai_chat_history`
+##### Collection: `ai_conversations` (ChatGPT-Style Multi-Session Threads)
 ```json
 {
   "_id": { "$oid": "664b321a9f12d8a4392b4512" },
+  "conversationId": "conv_1788609503494_9k2a",
   "studentEmail": "ethan@example.com",
-  "role": "ai",
-  "text": "React hooks allow functional components to manage local state and lifecycle methods without classes.",
-  "latencyMs": 42,
-  "source": "cache",
-  "model": "qwen/qwen3.8-27b",
-  "timestamp": "2026-09-06T11:15:30.412Z",
-  "createdAt": { "$date": "2026-09-06T11:15:30.412Z" }
+  "title": "Explain Polyglot Persistence simply",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Explain Polyglot Persistence simply",
+      "timestamp": "2026-09-06T11:40:00.000Z",
+      "createdAt": { "$date": "2026-09-06T11:40:00.000Z" }
+    },
+    {
+      "role": "ai",
+      "text": "Polyglot Persistence means using different database engines for different data needs...",
+      "latencyMs": 42,
+      "source": "cache",
+      "model": "qwen/qwen3.8-27b",
+      "timestamp": "2026-09-06T11:40:01.000Z",
+      "createdAt": { "$date": "2026-09-06T11:40:01.000Z" }
+    }
+  ],
+  "createdAt": { "$date": "2026-09-06T11:40:00.000Z" },
+  "updatedAt": { "$date": "2026-09-06T11:40:01.000Z" }
 }
 ```
 

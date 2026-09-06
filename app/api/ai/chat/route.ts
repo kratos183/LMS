@@ -14,37 +14,56 @@ const CANDIDATE_MODELS = [
 ];
 
 /**
- * Helper to persist AI chat conversation pairs to MongoDB Atlas (Concept #11: NoSQL)
+ * Helper to persist AI chat conversation sessions to MongoDB Atlas (Concept #11: NoSQL)
  */
 async function persistChatToMongo(
   studentEmail: string,
   userText: string,
   aiText: string,
-  metadata: { latencyMs?: number; source?: string; model?: string }
+  metadata: { latencyMs?: number; source?: string; model?: string; conversationId?: string; title?: string }
 ) {
   try {
     const db = await getDatabase();
     if (db) {
-      const collection = db.collection('ai_chat_history');
-      await collection.insertMany([
+      const convId = metadata.conversationId || `conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const title = metadata.title || (userText.length > 38 ? `${userText.slice(0, 38)}...` : userText) || 'New Conversation';
+
+      const userMsg = {
+        role: 'user',
+        text: userText,
+        timestamp: new Date().toISOString(),
+        createdAt: new Date(),
+      };
+
+      const aiMsg = {
+        role: 'ai',
+        text: aiText,
+        latencyMs: metadata.latencyMs,
+        source: metadata.source,
+        model: metadata.model,
+        timestamp: new Date().toISOString(),
+        createdAt: new Date(),
+      };
+
+      const collection = db.collection('ai_conversations');
+      await collection.updateOne(
+        { studentEmail, conversationId: convId },
         {
-          studentEmail,
-          role: 'user',
-          text: userText,
-          timestamp: new Date().toISOString(),
-          createdAt: new Date(),
+          $setOnInsert: {
+            conversationId: convId,
+            studentEmail,
+            title,
+            createdAt: new Date(),
+          },
+          $set: {
+            updatedAt: new Date(),
+          },
+          $push: {
+            messages: { $each: [userMsg, aiMsg] },
+          } as any,
         },
-        {
-          studentEmail,
-          role: 'ai',
-          text: aiText,
-          latencyMs: metadata.latencyMs,
-          source: metadata.source,
-          model: metadata.model,
-          timestamp: new Date().toISOString(),
-          createdAt: new Date(),
-        },
-      ]);
+        { upsert: true }
+      );
     }
   } catch (err: any) {
     console.warn('[MongoDB Chat Persist Warning]:', err.message);
@@ -63,7 +82,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { messages, studentContext } = body;
+    const { messages, studentContext, conversationId, title } = body;
     const lastUserMessage = messages?.[messages.length - 1]?.text || '';
     const studentEmail = studentContext?.email || 'ethan@example.com';
 
@@ -122,12 +141,15 @@ export async function POST(req: NextRequest) {
             latencyMs: data.latencyMs,
             source: data.source,
             model: data.model,
+            conversationId,
+            title,
           }).catch(() => {});
         }
 
         return NextResponse.json(
           {
             ...data,
+            conversationId: conversationId || `conv_${Date.now()}`,
             gatewayLatencyMs,
           },
           {
@@ -214,6 +236,8 @@ Total Amount Spent: ${studentContext?.totalSpent || '₹3,297'}
               latencyMs,
               source: 'llm',
               model,
+              conversationId,
+              title,
             }).catch(() => {});
 
             return NextResponse.json(
@@ -222,6 +246,7 @@ Total Amount Spent: ${studentContext?.totalSpent || '₹3,297'}
                 source: 'llm',
                 latencyMs,
                 model,
+                conversationId: conversationId || `conv_${Date.now()}`,
                 service: 'nextjs-direct-fallback',
               },
               {

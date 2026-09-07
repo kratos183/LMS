@@ -6,7 +6,8 @@ import {
   BarChart3, DollarSign, Star, MessageSquare, Award, Tag, Megaphone,
   FileText, User, LogOut, Menu, X, Search, Bell, ChevronDown,
   GripVertical, PlayCircle, MoreHorizontal, CheckCircle2, Users,
-  CheckCircle, ImageIcon, Video, RefreshCw, Zap, Database, Sparkles, ShieldCheck, Check, CornerDownRight
+  CheckCircle, ImageIcon, Video, RefreshCw, Zap, Database, Sparkles, ShieldCheck, Check, CornerDownRight,
+  KeyRound, AlertCircle, Eye, EyeOff, Save, Loader2
 } from "lucide-react";
 import Navbar from "../component/navbar";
 import { Course, Lesson, FaqItem, Review } from "@/types";
@@ -1612,54 +1613,385 @@ export default function InstructorDashboard() {
     </div>
   );
 
-  const Profile = () => (
-    <div className="max-w-3xl space-y-8 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">Instructor Profile</h2>
-      <div className="bg-white p-8 rounded-xl border border-gray-100 shadow-sm space-y-6">
-        <div className="flex items-center gap-6 mb-8">
-          <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden border-4 border-white shadow-md">
-            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop" alt="Avatar" className="w-full h-full object-cover" />
-          </div>
-          <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition">Update Profile Image</button>
+  const Profile = () => {
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+    // Profile Fields
+    const [username, setUsername] = useState("");
+    const [fullName, setFullName] = useState("");
+    const [email, setEmail] = useState("");
+    const [bio, setBio] = useState("");
+    const [avatarUrl, setAvatarUrl] = useState("");
+    const [socialTwitter, setSocialTwitter] = useState("");
+    const [socialGithub, setSocialGithub] = useState("");
+    const [socialLinkedin, setSocialLinkedin] = useState("");
+
+    // Password Fields
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+
+    // Messages
+    const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Fetch Profile
+    const fetchProfile = async () => {
+      setProfileLoading(true);
+      try {
+        const res = await fetch('/api/users/profile');
+        const data = await res.json();
+        if (data.profile) {
+          setUsername(data.profile.username || "");
+          setFullName(data.profile.fullName || "");
+          setEmail(data.profile.email || "");
+          setBio(data.profile.bio || "");
+          setAvatarUrl(data.profile.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(data.profile.email || 'instructor')}`);
+          if (data.profile.socialLinks) {
+            setSocialTwitter(data.profile.socialLinks.twitter || "");
+            setSocialGithub(data.profile.socialLinks.github || "");
+            setSocialLinkedin(data.profile.socialLinks.linkedin || "");
+          }
+        }
+      } catch (err: any) {
+        console.warn('Failed to load instructor profile:', err.message);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchProfile();
+    }, []);
+
+    // Save Profile
+    const handleSaveProfile = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSavingProfile(true);
+      setProfileMsg(null);
+
+      try {
+        const res = await fetch('/api/users/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: username.trim(),
+            fullName: fullName.trim(),
+            bio: bio.trim(),
+            avatarUrl,
+            socialLinks: {
+              twitter: socialTwitter.trim(),
+              github: socialGithub.trim(),
+              linkedin: socialLinkedin.trim(),
+            },
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setProfileMsg({ type: 'error', text: data.error || 'Failed to save profile' });
+        } else {
+          setProfileMsg({ type: 'success', text: data.message || 'Profile saved successfully!' });
+          setTimeout(() => setProfileMsg(null), 5000);
+        }
+      } catch (err: any) {
+        setProfileMsg({ type: 'error', text: err.message || 'Network error' });
+      } finally {
+        setIsSavingProfile(false);
+      }
+    };
+
+    // Update Password
+    const handleChangePassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setPasswordMsg(null);
+
+      if (newPassword.length < 6) {
+        setPasswordMsg({ type: 'error', text: 'New password must be at least 6 characters long.' });
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        setPasswordMsg({ type: 'error', text: 'New password and confirmation do not match.' });
+        return;
+      }
+
+      setIsSavingPassword(true);
+      try {
+        const res = await fetch('/api/users/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setPasswordMsg({ type: 'error', text: data.error || 'Failed to update password' });
+        } else {
+          setPasswordMsg({ type: 'success', text: 'Password updated successfully!' });
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+          setTimeout(() => setPasswordMsg(null), 5000);
+        }
+      } catch (err: any) {
+        setPasswordMsg({ type: 'error', text: err.message || 'Network error' });
+      } finally {
+        setIsSavingPassword(false);
+      }
+    };
+
+    if (profileLoading) {
+      return (
+        <div className="bg-white p-12 rounded-2xl border border-gray-100 text-center space-y-3 max-w-3xl">
+          <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto" />
+          <p className="text-xs text-gray-500">Loading instructor profile details...</p>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Full Name</label>
-            <input type="text" defaultValue="John Doe" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Email</label>
-            <input type="email" defaultValue="john@edupress.com" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium text-gray-700">Bio</label>
-            <textarea rows={3} defaultValue="Senior Frontend Developer with 10+ years of experience. Passionate about teaching React and modern web development." className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition"></textarea>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Experience</label>
-            <input type="text" defaultValue="10 Years" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Skills</label>
-            <input type="text" defaultValue="React, Next.js, Node.js, TypeScript" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Portfolio URL</label>
-            <input type="url" placeholder="https://johndoe.dev" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">LinkedIn Profile</label>
-            <input type="url" placeholder="https://linkedin.com/in/johndoe" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none transition" />
-          </div>
+      );
+    }
+
+    return (
+      <div className="max-w-3xl space-y-8 animate-in fade-in duration-500">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Instructor Profile Settings</h2>
+          <p className="text-xs text-gray-500 mt-1">Manage your public instructor bio, username, and account credentials</p>
         </div>
-        
-        <div className="pt-6 border-t border-gray-100 flex justify-end">
-          <button className="bg-orange-500 text-white px-8 py-3 rounded-lg font-bold hover:bg-orange-600 transition shadow-md shadow-orange-200">Save Profile</button>
+
+        {/* --- PROFILE DETAILS CARD --- */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 pb-6 border-b border-gray-100">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-orange-400 to-amber-500 p-0.5 shadow-md">
+              <img
+                src={avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username || email || 'instructor')}`}
+                alt="Avatar"
+                className="w-full h-full object-cover rounded-2xl bg-white"
+              />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-base text-gray-900">{fullName || username || 'Instructor'}</h3>
+              <p className="text-xs text-gray-500">{email}</p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl(`https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`)}
+                  className="text-xs text-orange-600 bg-orange-50 hover:bg-orange-100 px-3 py-1 rounded-lg font-semibold transition"
+                >
+                  Generate New Avatar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {profileMsg && (
+            <div
+              className={`p-4 rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-200 ${
+                profileMsg.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-red-50 border border-red-200 text-red-800'
+              }`}
+            >
+              {profileMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span>{profileMsg.text}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveProfile} className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  placeholder="e.g. john_doe"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">Full Name / Display Name</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Email Address (Read-Only)</label>
+                <input
+                  type="email"
+                  value={email}
+                  disabled
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-100/70 text-gray-500 outline-none cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Instructor Bio & Experience</label>
+                <textarea
+                  rows={3}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Share your teaching expertise, industry achievements, and course specializations..."
+                  className="w-full border border-gray-200 rounded-xl p-3.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition resize-none"
+                ></textarea>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">Portfolio / Website URL</label>
+                <input
+                  type="url"
+                  value={socialGithub}
+                  onChange={(e) => setSocialGithub(e.target.value)}
+                  placeholder="https://johndoe.dev"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">LinkedIn Profile</label>
+                <input
+                  type="url"
+                  value={socialLinkedin}
+                  onChange={(e) => setSocialLinkedin(e.target.value)}
+                  placeholder="https://linkedin.com/in/username"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSavingProfile}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-orange-500/20"
+              >
+                {isSavingProfile ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" /> Save Instructor Profile
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* --- CHANGE PASSWORD CARD --- */}
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 shadow-sm space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-gray-900">Change Account Password</h3>
+              <p className="text-xs text-gray-500">Update your login password securely</p>
+            </div>
+          </div>
+
+          {passwordMsg && (
+            <div
+              className={`p-4 rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-200 ${
+                passwordMsg.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-red-50 border border-red-200 text-red-800'
+              }`}
+            >
+              {passwordMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span>{passwordMsg.text}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700">Current Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter your current password"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">New Password</label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  placeholder="Min 6 characters"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">Confirm New Password</label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  placeholder="Repeat new password"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-xs bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSavingPassword || !newPassword}
+                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-orange-600 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                {isSavingPassword ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating Password...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-3.5 h-3.5" /> Update Password
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   /* -------------------------------------------------------------------------- */
   /*                                MAIN RENDER                                 */

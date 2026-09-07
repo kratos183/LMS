@@ -98,7 +98,7 @@ export async function PUT(request: NextRequest) {
     if (!userId && adminClient) {
       try {
         const { data: usersList } = await adminClient.auth.admin.listUsers();
-        const found = usersList?.users?.find((u) => u.email?.toLowerCase() === userEmail);
+        const found = (usersList?.users as any[])?.find((u: any) => u.email?.toLowerCase() === userEmail);
         if (found) userId = found.id;
       } catch {}
     }

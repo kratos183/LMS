@@ -19,14 +19,19 @@ function createServerClient() {
   );
 }
 
-function setCookieRole(response: NextResponse, role: string) {
-  response.cookies.set('user_role', role, {
+function setCookieAuth(response: NextResponse, role: string, email: string, userId?: string) {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'lax' as const,
     path: '/',
     maxAge: 60 * 60 * 24 * 7,
-  });
+  };
+  response.cookies.set('user_role', role, cookieOptions);
+  response.cookies.set('user_email', email.toLowerCase(), cookieOptions);
+  if (userId) {
+    response.cookies.set('user_id', userId, cookieOptions);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -37,6 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
     const supabase = createServerClient();
 
     // REGISTER
@@ -45,8 +51,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Username is required' }, { status: 400 });
       }
 
-      const { data: _data, error } = await supabase.auth.signUp({
-        email,
+      const { data: regData, error } = await supabase.auth.signUp({
+        email: cleanEmail,
         password,
         options: {
           data: { username, role: 'student' },
@@ -57,14 +63,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      const response = NextResponse.json({ success: true, role: 'student' });
-      setCookieRole(response, 'student');
+      const response = NextResponse.json({ success: true, role: 'student', email: cleanEmail });
+      setCookieAuth(response, 'student', cleanEmail, regData?.user?.id);
       return response;
     }
 
     // LOGIN
     const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-      email,
+      email: cleanEmail,
       password,
     });
 
@@ -89,8 +95,8 @@ export async function POST(request: NextRequest) {
       role = loginData.user.user_metadata.role;
     }
 
-    const response = NextResponse.json({ success: true, role });
-    setCookieRole(response, role);
+    const response = NextResponse.json({ success: true, role, email: cleanEmail, userId });
+    setCookieAuth(response, role, cleanEmail, userId);
     return response;
 
   } catch (err: any) {

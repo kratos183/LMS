@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getRedisClient } from '@/lib/redis';
+import { getDatabase } from '@/lib/mongodb';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +114,50 @@ export async function POST(req: NextRequest) {
     const invoiceId = `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     console.log(`💾 [Database Step] Enrolling ${studentEmail} into Course ${courseId} (${courseTitle})`);
     console.log(`🧾 [Invoice Step] Generated Invoice: ${invoiceId} for ₹${amount} ${currency}`);
+
+    // Persist to MongoDB Atlas course_enrollments
+    try {
+      const db = await getDatabase();
+      if (db) {
+        await db.collection('course_enrollments').updateOne(
+          { studentEmail: studentEmail.toLowerCase(), courseId: String(courseId) },
+          {
+            $set: {
+              courseId: String(courseId),
+              courseTitle,
+              studentEmail: studentEmail.toLowerCase(),
+              paymentId,
+              orderId,
+              invoiceId,
+              amount,
+              currency,
+              status: 'active',
+              enrolledAt: new Date().toISOString(),
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+      }
+    } catch (dbErr: any) {
+      console.warn('[MongoDB Webhook Save Warn]:', dbErr.message);
+    }
+
+    // Persist to Supabase PostgreSQL enrollments table
+    try {
+      await supabase
+        .from('enrollments')
+        .upsert(
+          {
+            user_email: studentEmail.toLowerCase(),
+            course_id: String(courseId),
+            enrolled_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_email,course_id' }
+        );
+    } catch (pgErr: any) {
+      console.warn('[Supabase Webhook Save Warn]:', pgErr.message);
+    }
 
     // =========================================================================
     // STEP 4: REAL-TIME NOTIFICATION PUSH VIA WEBSOCKETS (Port 4000)

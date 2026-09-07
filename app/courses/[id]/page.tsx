@@ -91,19 +91,61 @@ export default function CourseDetailPage() {
   const [reviewSuccess, setReviewSuccess] = useState<boolean>(false);
   const [reviewReadLatency, setReviewReadLatency] = useState<number | null>(null);
   const [helpfulLikes, setHelpfulLikes] = useState<Record<string, number>>({});
+  const [currentUser, setCurrentUser] = useState<{ email: string | null; role: string | null; userId: string | null }>({ email: null, role: null, userId: null });
 
   const toggleSection = (sectionId: string) => {
     setOpenSection(openSection === sectionId ? null : sectionId);
   };
 
   useEffect(() => {
-    // Check local storage for enrollment state
-    if (typeof window !== 'undefined') {
-      const enrolled = localStorage.getItem(`enrolled_${courseId}`);
-      if (enrolled === 'true') {
-        setIsEnrolled(true);
+    // 1. Verify authenticated user identity and enrollment status
+    const checkUserAndEnrollment = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        const userData = await res.json();
+        const userEmail = userData?.email ? userData.email.toLowerCase().trim() : null;
+        const userRole = userData?.role || null;
+        setCurrentUser({ email: userEmail, role: userRole, userId: userData?.userId || null });
+
+        if (userEmail) {
+          // Prepopulate review form details with authenticated student credentials
+          setReviewStudentEmail(userEmail);
+          if (userEmail.includes('@')) {
+            const namePart = userEmail.split('@')[0].replace(/[._-]/g, ' ');
+            setReviewStudentName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
+          }
+
+          // Check server-side enrollment specifically for THIS user
+          const enrollRes = await fetch(`/api/enrollments?courseId=${encodeURIComponent(courseId)}&email=${encodeURIComponent(userEmail)}`);
+          const enrollData = await enrollRes.json();
+
+          if (enrollData.isEnrolled) {
+            setIsEnrolled(true);
+            return;
+          }
+
+          // User-isolated localStorage cache fallback
+          const localKey = `enrolled_${userEmail}_${courseId}`;
+          if (typeof window !== 'undefined' && localStorage.getItem(localKey) === 'true') {
+            setIsEnrolled(true);
+            return;
+          }
+        }
+
+        // Clean up any legacy un-scoped localStorage keys from previous versions
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(`enrolled_${courseId}`);
+        }
+
+        // If user is not logged in, or is another student, or is instructor/admin without purchase: LOCKED
+        setIsEnrolled(false);
+      } catch (err) {
+        console.warn('Enrollment verification failed:', err);
+        setIsEnrolled(false);
       }
-    }
+    };
+
+    checkUserAndEnrollment();
 
     const fetchCourse = async () => {
       const { data, error } = await supabase
@@ -354,26 +396,52 @@ export default function CourseDetailPage() {
   }, []);
 
   const completeEnrollment = async (paymentId: string, orderId: string) => {
+    const studentEmail = (currentUser.email || reviewStudentEmail || 'student@example.com').toLowerCase().trim();
+    const studentName = reviewStudentName || 'Student';
     const numericAmount = typeof course?.price === 'number'
       ? course.price
       : (course?.price ? parseFloat(String(course?.price).replace(/[^0-9.]/g, '')) || 19999 : 19999);
 
     const invoiceId = `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    localStorage.setItem(`enrolled_${courseId}`, 'true');
 
-    // Record in purchases history for Student Dashboard
-    const existingPurchases = JSON.parse(localStorage.getItem('student_purchases') || '[]');
-    existingPurchases.unshift({
-      course: course?.title || 'Cybersecurity Masterclass',
-      price: `₹${numericAmount}`,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      invoiceId: invoiceId,
-      paymentId: paymentId,
-      status: 'Completed',
-    });
-    localStorage.setItem('student_purchases', JSON.stringify(existingPurchases));
+    // Store user-isolated key (never leaks to other users on this device)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`enrolled_${studentEmail}_${courseId}`, 'true');
+      localStorage.removeItem(`enrolled_${courseId}`); // Clear legacy global key
 
-    // Call backend webhook API to record in Redis & database
+      // Record in user-specific purchase history
+      const userPurchaseKey = `student_purchases_${studentEmail}`;
+      const existingPurchases = JSON.parse(localStorage.getItem(userPurchaseKey) || localStorage.getItem('student_purchases') || '[]');
+      existingPurchases.unshift({
+        course: course?.title || 'Cybersecurity Masterclass',
+        courseId: courseId,
+        price: `₹${numericAmount}`,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        invoiceId: invoiceId,
+        paymentId: paymentId,
+        status: 'Completed',
+      });
+      localStorage.setItem(userPurchaseKey, JSON.stringify(existingPurchases));
+      localStorage.setItem('student_purchases', JSON.stringify(existingPurchases));
+    }
+
+    // 1. Persist to /api/enrollments (MongoDB Atlas & Supabase PostgreSQL)
+    try {
+      await fetch('/api/enrollments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          courseTitle: course?.title || 'Course Masterclass',
+          studentEmail,
+          paymentId,
+          invoiceId,
+          amount: numericAmount,
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    // 2. Call backend webhook API to record in Redis & database
     try {
       await fetch('/api/webhooks/razorpay', {
         method: 'POST',
@@ -393,11 +461,11 @@ export default function CourseDetailPage() {
                 currency: 'INR',
                 status: 'captured',
                 method: selectedPaymentTab,
-                email: 'ethan.hunt@example.com',
+                email: studentEmail,
                 notes: {
                   courseId: courseId,
                   courseTitle: course?.title || 'Cybersecurity Masterclass',
-                  studentName: 'Ethan Hunt',
+                  studentName: studentName,
                 },
               },
             },

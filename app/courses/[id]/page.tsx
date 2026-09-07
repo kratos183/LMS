@@ -84,8 +84,8 @@ export default function CourseDetailPage() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewFormRating, setReviewFormRating] = useState<number>(5);
   const [reviewHoverRating, setReviewHoverRating] = useState<number>(0);
-  const [reviewStudentName, setReviewStudentName] = useState<string>('Ethan Hunt');
-  const [reviewStudentEmail, setReviewStudentEmail] = useState<string>('ethan.hunt@example.com');
+  const [reviewStudentName, setReviewStudentName] = useState<string>('Student');
+  const [reviewStudentEmail, setReviewStudentEmail] = useState<string>('');
   const [reviewContent, setReviewContent] = useState<string>('');
   const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
   const [reviewSuccess, setReviewSuccess] = useState<boolean>(false);
@@ -110,7 +110,9 @@ export default function CourseDetailPage() {
         if (userEmail) {
           // Prepopulate review form details with authenticated student credentials
           setReviewStudentEmail(userEmail);
-          if (userEmail.includes('@')) {
+          if (userData?.fullName) {
+            setReviewStudentName(userData.fullName);
+          } else if (userEmail.includes('@')) {
             const namePart = userEmail.split('@')[0].replace(/[._-]/g, ' ');
             setReviewStudentName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
           }
@@ -517,8 +519,8 @@ export default function CourseDetailPage() {
             );
           },
           prefill: {
-            name: 'Ethan Hunt',
-            email: 'ethan.hunt@example.com',
+            name: reviewStudentName || 'Student',
+            email: reviewStudentEmail || 'student@example.com',
             contact: '+919876543210',
           },
           theme: {

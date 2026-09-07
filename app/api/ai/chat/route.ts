@@ -83,8 +83,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { messages, studentContext, conversationId, title } = body;
-    const lastUserMessage = messages?.[messages.length - 1]?.text || '';
-    const studentEmail = studentContext?.email || 'ethan@example.com';
+    const studentEmail = (studentContext?.email || req.cookies.get('user_email')?.value || 'student@example.com').toLowerCase().trim();
+    const studentName = studentContext?.name || studentEmail.split('@')[0] || 'Student';
+    const totalSpent = studentContext?.totalSpent || '₹0';
+    const lastUserMessage = messages && messages.length > 0
+      ? messages[messages.length - 1]?.text || 'Hello'
+      : 'Hello';
 
     // =========================================================================
     // STEP 1: RATE LIMITING DEFENSE (Concept #28 - 10 queries/min limit)
@@ -178,23 +182,24 @@ You are the official AI Learning Assistant for "EduPress LMS" (Support: support@
 You are speaking directly with the currently authenticated student. You have real-time access to their personalized student record below.
 
 === CURRENT STUDENT PROFILE ===
-Name: ${studentContext?.name || 'Ethan Hunt'}
+Name: ${studentName}
 Email: ${studentEmail}
-Enrolled Since: ${studentContext?.enrolledSince || 'January 2024'}
+Enrolled Since: ${studentContext?.enrolledSince || '2026'}
 
 === ENROLLED COURSES & PROGRESS ===
 ${JSON.stringify(
-  studentContext?.courses || [
-    { title: "React Masterclass", progress: "78%", completedLessons: 12, totalLessons: 16, instructor: "John Doe" },
-    { title: "Next.js Fundamentals", progress: "100%", completedLessons: 20, totalLessons: 20, instructor: "Jane Smith" },
-    { title: "Python Data Science", progress: "30%", completedLessons: 6, totalLessons: 20, instructor: "Alex Rivera" },
-  ],
+  studentContext?.courses && studentContext.courses.length > 0
+    ? studentContext.courses
+    : [
+        { title: "React Masterclass", progress: "78%", completedLessons: 12, totalLessons: 16, instructor: "John Doe" },
+        { title: "Next.js Fundamentals", progress: "100%", completedLessons: 20, totalLessons: 20, instructor: "Jane Smith" },
+      ],
   null,
   2
 )}
 
 === FINANCIAL SUMMARY ===
-Total Amount Spent: ${studentContext?.totalSpent || '₹3,297'}
+Total Amount Spent: ${totalSpent}
 
 === INSTRUCTIONS ===
 1. Be warm, polite, encouraging, and concise.

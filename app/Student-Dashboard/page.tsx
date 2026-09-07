@@ -25,6 +25,26 @@ export default function StudentDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
+  // Authenticated Student State
+  const [currentUser, setCurrentUser] = useState<{
+    id?: string;
+    fullName: string;
+    username: string;
+    email: string;
+    avatarUrl: string;
+    bio?: string;
+    role?: string;
+  }>({
+    fullName: "Student",
+    username: "student",
+    email: "",
+    avatarUrl: "",
+    bio: "",
+  });
+
+  const [userPurchases, setUserPurchases] = useState<any[]>([]);
+  const [totalSpentAmount, setTotalSpentAmount] = useState<number>(0);
+
   // Real-Time WebSockets State (Concept #24)
   const [wsConnected, setWsConnected] = useState(false);
   const [realtimeToast, setRealtimeToast] = useState<{ title: string; desc: string; type: string } | null>(null);
@@ -36,6 +56,60 @@ export default function StudentDashboard() {
     { id: "notif_4", title: "Assignment Graded", desc: "You scored 9.5/10 on Redux Toolkit Milestone.", time: "5d ago", read: true, type: "ASSIGNMENT" },
   ]);
 
+  // Fetch student profile and calculate purchases
+  const fetchUserProfile = async () => {
+    try {
+      const res = await fetch('/api/users/profile');
+      const data = await res.json();
+      if (data.profile) {
+        const p = data.profile;
+        const avatar = p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.email || p.username || 'student')}`;
+        const userObj = {
+          id: p.id,
+          fullName: p.fullName || (p.username ? p.username.charAt(0).toUpperCase() + p.username.slice(1) : 'Student'),
+          username: p.username || 'student',
+          email: p.email || '',
+          avatarUrl: avatar,
+          bio: p.bio || '',
+          role: p.role || 'student',
+        };
+        setCurrentUser(userObj);
+
+        // Load user-scoped purchases
+        if (p.email) {
+          const userPurchaseKey = `student_purchases_${p.email}`;
+          const raw = localStorage.getItem(userPurchaseKey) || localStorage.getItem('student_purchases');
+          let purchases = [];
+          try {
+            purchases = raw ? JSON.parse(raw) : [];
+          } catch {
+            purchases = [];
+          }
+          if (!Array.isArray(purchases)) purchases = [];
+          setUserPurchases(purchases);
+
+          // Calculate total spent
+          let total = 0;
+          purchases.forEach((item: any) => {
+            if (typeof item.price === 'number') {
+              total += item.price;
+            } else if (item.price) {
+              const num = parseFloat(String(item.price).replace(/[^0-9.]/g, ''));
+              if (!isNaN(num)) total += num;
+            }
+          });
+          setTotalSpentAmount(total);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load user profile in StudentDashboard:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
+
   // Concept #11: Telemetry Logger for MongoDB Atlas User Activity Logs
   const logStudentActivity = async (action: string, details?: any) => {
     try {
@@ -44,7 +118,7 @@ export default function StudentDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
-          studentEmail: 'ethan@example.com',
+          studentEmail: currentUser.email || 'student@example.com',
           details: details || {},
         }),
       });
@@ -56,7 +130,7 @@ export default function StudentDashboard() {
   // Automatically record tab navigation events to MongoDB Atlas
   useEffect(() => {
     logStudentActivity('VIEW_TAB', { tab: activeTab });
-  }, [activeTab]);
+  }, [activeTab, currentUser.email]);
 
   // Connect to Real-Time WebSocket Server (Port 4000 / Nginx Proxy)
   useEffect(() => {
@@ -137,7 +211,7 @@ export default function StudentDashboard() {
             payload: {
               courseTitle: 'React Masterclass',
               replyPreview: 'Yes! useEffect cleanups execute before the component unmounts or before re-running the effect.',
-              studentEmail: 'ethan@example.com',
+              studentEmail: currentUser.email || 'student@example.com',
               instructorName: 'John Doe',
             },
           };
@@ -181,50 +255,61 @@ export default function StudentDashboard() {
   /*                                VIEW COMPONENTS                             */
   /* -------------------------------------------------------------------------- */
 
-  const DashboardHome = () => (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-8 text-white shadow-lg">
-        <h1 className="text-3xl font-bold mb-2">Welcome Ethan 👋</h1>
-        <p className="opacity-90">You&apos;ve learned for 58 hours this month. Keep up the great work!</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Enrolled Courses", val: "6", icon: BookOpen, color: "bg-blue-50 text-blue-600" },
-          { label: "Completed", val: "2", icon: CheckCircle, color: "bg-green-50 text-green-600" },
-          { label: "Certificates", val: "2", icon: Award, color: "bg-purple-50 text-purple-600" },
-          { label: "Hours Learned", val: "58", icon: PlayCircle, color: "bg-orange-50 text-orange-600" },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
-              <stat.icon className="w-6 h-6" />
+  const DashboardHome = () => {
+    const firstName = (currentUser.fullName || currentUser.username || "Student").split(" ")[0];
+    const enrolledCount = userPurchases.length > 0 ? userPurchases.length : coursesList.length;
+    const completedCount = coursesList.filter(c => c.progress === 100 || c.claimed).length;
+    const certsCount = certificatesList.length;
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-8 text-white shadow-lg">
+          <h1 className="text-3xl font-bold mb-2">Welcome {firstName} 👋</h1>
+          <p className="opacity-90">
+            {totalSpentAmount > 0
+              ? `Total investment: ₹${totalSpentAmount.toLocaleString('en-IN')} across ${enrolledCount} course${enrolledCount === 1 ? '' : 's'}. Keep up the great work!`
+              : "You're all set to start your learning journey. Check out your enrolled courses below!"}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: "Enrolled Courses", val: String(enrolledCount), icon: BookOpen, color: "bg-blue-50 text-blue-600" },
+            { label: "Completed", val: String(completedCount), icon: CheckCircle, color: "bg-green-50 text-green-600" },
+            { label: "Certificates", val: String(certsCount), icon: Award, color: "bg-purple-50 text-purple-600" },
+            { label: "Total Spent", val: `₹${totalSpentAmount.toLocaleString('en-IN')}`, icon: CreditCard, color: "bg-orange-50 text-orange-600" },
+          ].map((stat, i) => (
+            <div key={i} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
+                <stat.icon className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{stat.val}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">{stat.label}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stat.val}</p>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">{stat.label}</p>
+          ))}
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-900 mb-4">Continue Learning</h3>
+          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer group">
+            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden shrink-0">
+              <img src="https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=100&h=100&fit=crop" alt="React" className="w-full h-full object-cover" />
             </div>
-          </div>
-        ))}
-      </div>
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-        <h3 className="font-bold text-gray-900 mb-4">Continue Learning</h3>
-        <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer group">
-          <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden shrink-0">
-            <img src="https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=100&h=100&fit=crop" alt="React" className="w-full h-full object-cover" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-bold text-gray-900 group-hover:text-orange-500 transition">React Masterclass</h4>
-            <p className="text-xs text-gray-500 mt-1">Module 4 • Lesson 3: Advanced Hooks</p>
-            <div className="w-full bg-gray-200 h-1.5 rounded-full mt-3 overflow-hidden">
-              <div className="bg-orange-500 h-full rounded-full" style={{ width: "78%" }}></div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900 group-hover:text-orange-500 transition">React Masterclass</h4>
+              <p className="text-xs text-gray-500 mt-1">Module 4 • Lesson 3: Advanced Hooks</p>
+              <div className="w-full bg-gray-200 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div className="bg-orange-500 h-full rounded-full" style={{ width: "78%" }}></div>
+              </div>
             </div>
+            <button className="w-10 h-10 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition shrink-0">
+              <PlayCircle className="w-5 h-5 fill-current" />
+            </button>
           </div>
-          <button className="w-10 h-10 bg-orange-500 text-white rounded-full flex items-center justify-center hover:bg-orange-600 transition shrink-0">
-            <PlayCircle className="w-5 h-5 fill-current" />
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Courses State with Asynchronous Queue Support
   const [coursesList, setCoursesList] = useState([
@@ -292,7 +377,7 @@ export default function StudentDashboard() {
 
     ctx.fillStyle = "#EA580C";
     ctx.font = "bold 56px 'Georgia', serif";
-    ctx.fillText("Ethan Hunt", canvas.width / 2, 350);
+    ctx.fillText(currentUser.fullName || currentUser.username || "Student", canvas.width / 2, 350);
 
     ctx.strokeStyle = "#EA580C";
     ctx.lineWidth = 2;
@@ -379,8 +464,8 @@ export default function StudentDashboard() {
         body: JSON.stringify({
           courseId: course.id,
           courseTitle: course.title,
-          studentEmail: "ethan@example.com",
-          studentName: "Ethan Hunt",
+          studentEmail: currentUser.email || "student@example.com",
+          studentName: currentUser.fullName || currentUser.username || "Student",
           instructorName: course.instructor,
         }),
       });
@@ -711,8 +796,8 @@ export default function StudentDashboard() {
             course_id: selectedCourse,
             course_title: course?.title,
             instructor_name: course?.instructor, // Denormalized: stored directly in review table
-            student_name: 'Ethan Hunt',
-            student_email: 'ethan@example.com',
+            student_name: currentUser.fullName || currentUser.username || 'Student',
+            student_email: currentUser.email || 'student@example.com',
             rating,
             text: reviewText.trim(),
           }),
@@ -970,34 +1055,57 @@ export default function StudentDashboard() {
 
   const PurchaseHistory = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-900">Purchase History</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Purchase History</h2>
+          <p className="text-xs text-gray-500 mt-1">Verified transactions and payment invoices for {currentUser.email || 'your account'}</p>
+        </div>
+        <div className="bg-orange-50 border border-orange-200 px-4 py-2 rounded-xl text-right">
+          <p className="text-[11px] uppercase tracking-wider text-orange-600 font-bold">Total Spent</p>
+          <p className="text-xl font-extrabold text-orange-700">₹{totalSpentAmount.toLocaleString('en-IN')}</p>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="px-6 py-4 font-medium">Course</th>
-              <th className="px-6 py-4 font-medium">Amount</th>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {[
-              { name: "React Masterclass", price: "₹999", status: "Paid" },
-              { name: "Next.js Fundamentals", price: "₹1,499", status: "Paid" },
-              { name: "Python Data Science", price: "₹799", status: "Paid" },
-            ].map((item, i) => (
-              <tr key={i} className="hover:bg-gray-50 transition">
-                <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
-                <td className="px-6 py-4 text-gray-600">{item.price}</td>
-                <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">{item.status}</span></td>
-                <td className="px-6 py-4 text-right">
-                  <button className="text-orange-500 hover:text-orange-600 text-xs font-medium">Download Invoice</button>
-                </td>
+        {userPurchases.length === 0 ? (
+          <div className="p-12 text-center text-gray-500 space-y-2">
+            <CreditCard className="w-10 h-10 text-gray-300 mx-auto" />
+            <p className="font-semibold text-gray-700">No purchases recorded yet</p>
+            <p className="text-xs text-gray-400">When you enroll in courses, your invoices and purchase details will appear here.</p>
+          </div>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
+              <tr>
+                <th className="px-6 py-4 font-medium">Course</th>
+                <th className="px-6 py-4 font-medium">Invoice ID</th>
+                <th className="px-6 py-4 font-medium">Amount</th>
+                <th className="px-6 py-4 font-medium">Date</th>
+                <th className="px-6 py-4 font-medium">Status</th>
+                <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {userPurchases.map((item, i) => (
+                <tr key={i} className="hover:bg-gray-50 transition">
+                  <td className="px-6 py-4 font-medium text-gray-900">{item.course || item.courseTitle || item.name}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-gray-500">{item.invoiceId || `INV-${i + 1001}`}</td>
+                  <td className="px-6 py-4 font-semibold text-gray-900">{typeof item.price === 'number' ? `₹${item.price.toLocaleString('en-IN')}` : (item.price || '₹0')}</td>
+                  <td className="px-6 py-4 text-gray-500 text-xs">{item.date || 'Recent'}</td>
+                  <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">{item.status || 'Paid'}</span></td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      onClick={() => alert(`Invoice ${item.invoiceId || 'INV-2026'} downloaded.`)}
+                      className="text-orange-500 hover:text-orange-600 text-xs font-medium cursor-pointer"
+                    >
+                      Download Invoice
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -1084,6 +1192,13 @@ export default function StudentDashboard() {
           setProfileMsg({ type: 'error', text: data.error || 'Failed to save profile' });
         } else {
           setProfileMsg({ type: 'success', text: data.message || 'Profile saved successfully!' });
+          setCurrentUser((prev) => ({
+            ...prev,
+            username: username.trim(),
+            fullName: fullName.trim() || username.trim(),
+            bio: bio.trim(),
+            avatarUrl: avatarUrl || prev.avatarUrl,
+          }));
           setTimeout(() => setProfileMsg(null), 5000);
         }
       } catch (err: any) {
@@ -1542,7 +1657,7 @@ export default function StudentDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'CUSTOM_STUDENT_ACTION',
-            studentEmail: 'ethan@example.com',
+            studentEmail: currentUser.email || 'student@example.com',
             details: {
               customNote: customEvent.trim(),
               sessionId: 'sess_' + Math.random().toString(36).substring(2, 9),
@@ -1714,7 +1829,7 @@ export default function StudentDashboard() {
                           {log.action}
                         </span>
                         <span className="text-xs font-semibold text-gray-800">
-                          {log.studentEmail || "ethan@example.com"}
+                          {log.studentEmail || currentUser.email || "student@example.com"}
                         </span>
                         {log.ip && (
                           <span className="text-[11px] text-gray-400 hidden md:inline-block font-mono">
@@ -1812,10 +1927,14 @@ export default function StudentDashboard() {
 
           <div className="p-4 border-t border-gray-100">
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" alt="User" className="w-10 h-10 rounded-full object-cover" />
+              <img
+                src={currentUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser.email || currentUser.username || 'student')}`}
+                alt={currentUser.fullName || currentUser.username || 'User'}
+                className="w-10 h-10 rounded-full object-cover border border-gray-200"
+              />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-900 truncate">Ethan Hunt</p>
-                <p className="text-xs text-gray-500 truncate">Student Account</p>
+                <p className="text-sm font-bold text-gray-900 truncate">{currentUser.fullName || currentUser.username || 'Student'}</p>
+                <p className="text-xs text-gray-500 truncate">{currentUser.email || 'Student Account'}</p>
               </div>
             </div>
           </div>
@@ -1867,7 +1986,14 @@ export default function StudentDashboard() {
               {activeTab === "settings" && <AccountSettings />}
               {activeTab === "discussions" && <Discussions />}
               {activeTab === "assignments" && <Assignments />}
-              {activeTab === "ai" && <AIAssistant />}
+              {activeTab === "ai" && (
+                <AIAssistant
+                  currentUser={currentUser}
+                  totalSpentAmount={totalSpentAmount}
+                  coursesList={coursesList}
+                  userPurchases={userPurchases}
+                />
+              )}
               {activeTab === "logs" && <ActivityLogs />}
             </div>
           </main>
@@ -1912,9 +2038,31 @@ interface ConversationSummary {
   createdAt?: string;
 }
 
-function AIAssistant() {
+interface AIAssistantProps {
+  currentUser: {
+    fullName: string;
+    username: string;
+    email: string;
+    avatarUrl: string;
+  };
+  totalSpentAmount: number;
+  coursesList: any[];
+  userPurchases: any[];
+}
+
+function AIAssistant({
+  currentUser,
+  totalSpentAmount,
+  coursesList,
+  userPurchases,
+}: AIAssistantProps) {
+  const studentEmail = currentUser.email || 'student@example.com';
+  const studentName = currentUser.fullName || currentUser.username || 'Student';
+  const firstName = studentName.split(' ')[0];
+  const totalSpentFormatted = `₹${totalSpentAmount.toLocaleString('en-IN')}`;
+
   const initialGreeting: ChatMessage[] = [
-    { role: "ai", text: "Hello! 👋 I'm your AI Learning Assistant powered by Groq. You can ask me anything about programming, courses, or just have a casual friendly chat. How can I help you today?" }
+    { role: "ai", text: `Hello ${firstName}! 👋 I'm your AI Learning Assistant powered by Groq. You can ask me anything about your enrolled courses, spent fees (${totalSpentFormatted}), programming concepts, or ask for guidance. How can I help you today?` }
   ];
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -1927,10 +2075,10 @@ function AIAssistant() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch list of saved conversations from MongoDB Atlas on mount
+  // Fetch list of saved conversations from MongoDB Atlas on mount or when user changes
   const fetchConversationList = async () => {
     try {
-      const res = await fetch('/api/ai/history?email=ethan@example.com');
+      const res = await fetch(`/api/ai/history?email=${encodeURIComponent(studentEmail)}`);
       const data = await res.json();
       if (data.conversations && Array.isArray(data.conversations)) {
         setConversations(data.conversations);
@@ -1950,7 +2098,7 @@ function AIAssistant() {
     setIsDrawerOpen(false);
 
     try {
-      const res = await fetch(`/api/ai/history?email=ethan@example.com&conversationId=${convId}`);
+      const res = await fetch(`/api/ai/history?email=${encodeURIComponent(studentEmail)}&conversationId=${encodeURIComponent(convId)}`);
       const data = await res.json();
       if (data.conversation && data.conversation.messages) {
         setChatHistory(data.conversation.messages.length > 0 ? data.conversation.messages : initialGreeting);
@@ -1976,7 +2124,7 @@ function AIAssistant() {
   const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/ai/history?email=ethan@example.com&conversationId=${convId}`, {
+      await fetch(`/api/ai/history?email=${encodeURIComponent(studentEmail)}&conversationId=${encodeURIComponent(convId)}`, {
         method: 'DELETE',
       });
       setConversations(prev => prev.filter(c => c.conversationId !== convId));
@@ -1992,7 +2140,7 @@ function AIAssistant() {
   const handleClearAllConversations = async () => {
     if (!confirm("Are you sure you want to delete all saved conversations from MongoDB?")) return;
     try {
-      await fetch('/api/ai/history?email=ethan@example.com&all=true', {
+      await fetch(`/api/ai/history?email=${encodeURIComponent(studentEmail)}&all=true`, {
         method: 'DELETE',
       });
       setConversations([]);
@@ -2012,7 +2160,7 @@ function AIAssistant() {
       setIsHistoryLoading(false);
     };
     init();
-  }, []);
+  }, [currentUser.email]);
 
   // Isolate scroll ONLY to the message container to prevent whole page / header from jumping
   useEffect(() => {
@@ -2061,15 +2209,22 @@ function AIAssistant() {
 
     try {
       const studentContext = {
-        name: "Ethan Hunt",
-        email: "ethan@example.com",
-        enrolledSince: "January 2024",
-        totalSpent: "₹3,297",
-        courses: [
-          { title: "React Masterclass", progress: "75%", instructor: "John Doe", status: "In Progress" },
-          { title: "Next.js Fundamentals", progress: "100%", instructor: "Jane Smith", status: "Completed" },
-          { title: "Python Data Science", progress: "30%", instructor: "Alex Rivera", status: "In Progress" },
-        ],
+        name: studentName,
+        email: studentEmail,
+        enrolledSince: "2026",
+        totalSpent: totalSpentFormatted,
+        courses: coursesList.map(c => ({
+          title: c.title,
+          progress: `${c.progress}%`,
+          instructor: c.instructor,
+          status: c.progress === 100 || c.claimed ? "Completed" : "In Progress"
+        })),
+        recentPurchases: userPurchases.map(p => ({
+          course: p.course || p.courseTitle,
+          price: typeof p.price === 'number' ? `₹${p.price.toLocaleString('en-IN')}` : p.price,
+          date: p.date,
+          invoiceId: p.invoiceId
+        })),
       };
 
       const res = await fetch('/api/ai/chat', {

@@ -75,7 +75,7 @@ const server = http.createServer((req, res) => {
           type: 'DOUBT_REPLIED',
           title: `Doubt Resolved: ${payload.courseTitle || 'React Masterclass'}`,
           desc: payload.replyPreview || 'Instructor John Doe replied to your doubt on Module 4.',
-          studentEmail: payload.studentEmail || 'ethan@example.com',
+          studentEmail: payload.studentEmail || 'student@example.com',
           instructorName: payload.instructorName || 'John Doe',
           createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           read: false,

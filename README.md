@@ -180,14 +180,24 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to test the 
 
 ## 🌐 Deployment
 
-This application is deployed on Vercel:
-
+### Vercel (Recommended for Preview / Staging)
 1. Push your code to your GitHub repository.
 2. Import the repository in [Vercel](https://vercel.com).
-3. Add all environment variables from `.env.local` into **Project Settings $\rightarrow$ Environment Variables**.
+3. Add all environment variables from `.env.local` into **Project Settings → Environment Variables**.
 4. Deploy!
 
 🚀 **Live Link**: [https://lms-tau-silk-12.vercel.app/](https://lms-tau-silk-12.vercel.app/)
+
+### AWS EC2 Production (Nginx + PM2)
+See [document.md](./document.md) for the complete production deployment guide including:
+- Reverse proxy & API gateway setup with Nginx
+- SSL/HTTPS with Let's Encrypt
+- Redis caching
+- PM2 process management
+- Database indexing
+
+### CI/CD
+Automatic deployment to EC2 is configured via GitHub Actions. See [CI_CD_SETUP.md](./CI_CD_SETUP.md) for setup instructions.
 
 ---
 

@@ -1,38 +1,97 @@
-name: Deploy to EC2
+name: Deploy LMS to EC2
 
 on:
   push:
-    branches:
-      - Main
+    branches: [Main, main]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  build:
+    name: Lint, Typecheck & Build
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy to EC2 via SSH
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run Next.js build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/Main' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          command_timeout: 20m 
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true
           script: |
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            
-            echo "🚀 Starting Deployment..."
-            cd /home/ec2-user/LMS
-            
+            set -e
+            echo "🚀 Starting deployment..."
+
+            cd ~/LMS || { echo "❌ Directory ~/LMS not found"; exit 1; }
+
+            echo "📥 Pulling latest code..."
+            git reset --hard origin/Main
             git pull origin Main
-            npm install
+
+            echo "📦 Installing dependencies..."
+            npm ci
+
+            echo "🔨 Building Next.js..."
             npm run build
-            
-            cp -r .next/static .next/standalone/.next/static
-            cp -r public .next/standalone/public
-            
-            pm2 restart edupress-lms
-            echo "✅ Deployment Successful!"
+
+            echo "🔄 Restarting PM2 services..."
+            pm2 restart nextjs-frontend
+            pm2 restart certificate-worker
+            pm2 restart ai-microservice
+            pm2 restart websocket-service
+            pm2 save
+
+            echo "✅ Deployment complete!"
+            pm2 status
+
+            echo "🔍 Running health checks..."
+            sleep 5
+
+            echo "Checking Next.js frontend..."
+            curl -f -I http://127.0.0.1:3000/ || echo "⚠️ Frontend health check failed"
+
+            echo "Checking AI microservice..."
+            curl -f http://127.0.0.1:5000/api/ai/health || echo "⚠️ AI service health check failed"
+
+            echo "🎉 All deployments finished!"

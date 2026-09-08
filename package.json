@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "worker": "tsx workers/certificate-worker.ts",
     "ai-service": "tsx services/ai-microservice/server.ts",
     "ws-service": "tsx services/websocket-service/server.ts",

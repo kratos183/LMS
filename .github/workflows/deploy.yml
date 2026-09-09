@@ -63,7 +63,7 @@ jobs:
           script_stop: true
           script: |
             set -e
-            echo "🚀 Starting deployment..."
+            echo "🚀 Starting Docker deployment..."
 
             cd ~/LMS || { echo "❌ Directory ~/LMS not found"; exit 1; }
 
@@ -71,24 +71,12 @@ jobs:
             git reset --hard origin/Main
             git pull origin Main
 
-            echo "📦 Installing dependencies..."
-            npm ci
-
-            echo "🔨 Building Next.js..."
-            npm run build
-
-            echo "🔄 Restarting PM2 services..."
-            pm2 restart nextjs-frontend
-            pm2 restart certificate-worker
-            pm2 restart ai-microservice
-            pm2 restart websocket-service
-            pm2 save
-
-            echo "✅ Deployment complete!"
-            pm2 status
+            echo "🔨 Rebuilding and restarting containers..."
+            docker compose down
+            docker compose up -d --build
 
             echo "🔍 Running health checks..."
-            sleep 5
+            sleep 10
 
             echo "Checking Next.js frontend..."
             curl -f -I http://127.0.0.1:3000/ || echo "⚠️ Frontend health check failed"
@@ -96,4 +84,5 @@ jobs:
             echo "Checking AI microservice..."
             curl -f http://127.0.0.1:5000/api/ai/health || echo "⚠️ AI service health check failed"
 
-            echo "🎉 All deployments finished!"
+            echo "🎉 Docker deployment complete!"
+            docker compose ps

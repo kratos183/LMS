@@ -12,7 +12,6 @@ export function getCloudinaryUploadURL(folder = 'lms/uploads'): string {
     {
       timestamp,
       folder,
-      resource_type: 'auto',
     },
     process.env.CLOUDINARY_API_SECRET!
   );

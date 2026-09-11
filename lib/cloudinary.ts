@@ -17,5 +17,5 @@ export function getCloudinaryUploadURL(folder = 'lms/uploads'): string {
     process.env.CLOUDINARY_API_SECRET!
   );
 
-  return `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/auto/upload?timestamp=${timestamp}&signature=${signature}&folder=${folder}`;
+  return `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/auto/upload?timestamp=${timestamp}&signature=${signature}&folder=${folder}&api_key=${process.env.CLOUDINARY_API_KEY}`;
 }

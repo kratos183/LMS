@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
+import { getVerifiedUser, requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,20 +11,22 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
+    const verifiedUser = await getVerifiedUser(req);
     const body = await req.json();
     const { action, details, studentEmail, courseId, metadata } = body;
 
+    const email = verifiedUser?.email || (studentEmail ? String(studentEmail).toLowerCase().trim() : 'anonymous');
     const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Browser';
 
     const logDocument = {
-      action: action || 'USER_ACTIVITY',
-      studentEmail: studentEmail || 'ethan@example.com',
-      courseId: courseId || null,
-      details: details || {},
-      metadata: metadata || {},
+      action: action ? String(action).slice(0, 50) : 'USER_ACTIVITY',
+      studentEmail: email,
+      courseId: courseId ? String(courseId) : null,
+      details: typeof details === 'object' && details !== null ? details : {},
+      metadata: typeof metadata === 'object' && metadata !== null ? metadata : {},
       ip: rawIp,
-      userAgent,
+      userAgent: userAgent.slice(0, 255),
       timestamp: new Date().toISOString(),
       createdAt: new Date(),
     };
@@ -50,9 +53,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const { user, response } = await requireAuth(req);
+    if (response) return response;
+
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const email = searchParams.get('email');
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
+    const queryEmail = searchParams.get('email');
+
+    // Only admin can view logs for all or other users
+    const email = (queryEmail && user!.role === 'admin') ? queryEmail.toLowerCase().trim() : (user!.role === 'admin' ? queryEmail : user!.email);
 
     const db = await getDatabase();
     if (!db) {

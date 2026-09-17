@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { getShardCollection, getShardForStudent, getAllShardCollections } from '@/lib/sharding';
+import { getVerifiedUser, requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,24 +11,23 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
+    const verifiedUser = await getVerifiedUser(req);
     const body = await req.json();
     const { action, studentEmail, courseId, details, metadata } = body;
 
-    if (!studentEmail) {
-      return NextResponse.json({ error: 'studentEmail is required' }, { status: 400 });
-    }
+    const email = verifiedUser?.email || (studentEmail ? String(studentEmail).toLowerCase().trim() : 'anonymous@example.com');
 
-    const shardIndex = getShardForStudent(studentEmail);
-    const collectionName = getShardCollection(studentEmail);
+    const shardIndex = getShardForStudent(email);
+    const collectionName = getShardCollection(email);
 
     const logDocument = {
-      action: action || 'USER_ACTIVITY',
-      studentEmail,
-      courseId: courseId || null,
-      details: details || {},
-      metadata: metadata || {},
+      action: action ? String(action).slice(0, 50) : 'USER_ACTIVITY',
+      studentEmail: email,
+      courseId: courseId ? String(courseId) : null,
+      details: typeof details === 'object' && details !== null ? details : {},
+      metadata: typeof metadata === 'object' && metadata !== null ? metadata : {},
       ip: req.headers.get('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1',
-      userAgent: req.headers.get('user-agent') || 'Unknown',
+      userAgent: (req.headers.get('user-agent') || 'Unknown').slice(0, 255),
       shardIndex,
       timestamp: new Date().toISOString(),
       createdAt: new Date(),
@@ -56,15 +56,22 @@ export async function POST(req: NextRequest) {
  * ?stats=true → aggregates document counts across all 4 shards
  */
 export async function GET(req: NextRequest) {
+  const { user, response } = await requireAuth(req);
+  if (response) return response;
+
   const { searchParams } = new URL(req.url);
-  const email = searchParams.get('email');
+  const queryEmail = searchParams.get('email');
   const stats = searchParams.get('stats') === 'true';
-  const limit = parseInt(searchParams.get('limit') || '20', 10);
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
 
   const db = await getDatabase();
 
-  // --- Cross-shard stats aggregation ---
+  // --- Cross-shard stats aggregation (admin only) ---
   if (stats) {
+    if (user!.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden: Admin access required for cross-shard statistics.' }, { status: 403 });
+    }
+
     if (!db) return NextResponse.json({ shards: [], totalDocuments: 0 });
 
     const shardStats = await Promise.all(
@@ -85,10 +92,8 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // --- Single-shard targeted read ---
-  if (!email) {
-    return NextResponse.json({ error: 'Provide ?email= for targeted read or ?stats=true for shard overview' }, { status: 400 });
-  }
+  // Only admin can read another student's logs
+  const email = (queryEmail && user!.role === 'admin') ? queryEmail.toLowerCase().trim() : user!.email;
 
   const shardIndex = getShardForStudent(email);
   const collectionName = getShardCollection(email);

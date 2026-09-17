@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,15 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest) {
   try {
+    const { user, response } = await requireAuth(req);
+    if (response) return response;
+
     const { searchParams } = new URL(req.url);
-    const email = searchParams.get('email') || 'ethan@example.com';
+    const queryEmail = searchParams.get('email');
     const conversationId = searchParams.get('conversationId');
+
+    // Only admin can view another student's conversations
+    const email = (queryEmail && user!.role === 'admin') ? queryEmail.toLowerCase().trim() : user!.email;
 
     const db = await getDatabase();
     if (!db) {
@@ -34,7 +41,7 @@ export async function GET(req: NextRequest) {
     if (conversationId) {
       const conv = await collection.findOne({
         studentEmail: email,
-        conversationId,
+        conversationId: String(conversationId),
       });
 
       if (!conv) {
@@ -90,16 +97,21 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const { user, response } = await requireAuth(req);
+    if (response) return response;
+
     const { searchParams } = new URL(req.url);
-    const email = searchParams.get('email') || 'ethan@example.com';
+    const queryEmail = searchParams.get('email');
     const conversationId = searchParams.get('conversationId');
     const deleteAll = searchParams.get('all') === 'true';
+
+    const email = (queryEmail && user!.role === 'admin') ? queryEmail.toLowerCase().trim() : user!.email;
 
     const db = await getDatabase();
     if (db) {
       const collection = db.collection('ai_conversations');
       if (conversationId) {
-        await collection.deleteOne({ studentEmail: email, conversationId });
+        await collection.deleteOne({ studentEmail: email, conversationId: String(conversationId) });
       } else if (deleteAll) {
         await collection.deleteMany({ studentEmail: email });
       }

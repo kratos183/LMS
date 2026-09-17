@@ -33,13 +33,20 @@
    - [Performance Benchmark](#45-performance-benchmark)
    - [Code Implementation](#46-code-implementation)
    - [EC2 Production Deployment & Verification Commands](#47-ec2-production-deployment--verification-commands)
-5. [Horizontal Scaling: 3-Instance Next.js Cluster with Nginx Load Balancer (Concept #13)](#5-horizontal-scaling-3-instance-nextjs-cluster-with-nginx-load-balancer-concept-13)
-   - [The Problem: Single-Instance Bottleneck](#51-the-problem-single-instance-bottleneck)
-   - [Horizontal Scaling Architecture](#52-horizontal-scaling-architecture)
-   - [Stateless Architecture Requirement](#53-stateless-architecture-requirement)
-   - [Performance & Capacity Analysis](#54-performance--capacity-analysis)
-   - [Code Changes](#55-code-changes)
-   - [EC2 Production Deployment & Verification Commands](#56-ec2-production-deployment--verification-commands)
+ 5. [Horizontal Scaling: 3-Instance Next.js Cluster with Nginx Load Balancer (Concept #13)](#5-horizontal-scaling-3-instance-nextjs-cluster-with-nginx-load-balancer-concept-13)
+    - [The Problem: Single-Instance Bottleneck](#51-the-problem-single-instance-bottleneck)
+    - [Horizontal Scaling Architecture](#52-horizontal-scaling-architecture)
+    - [Stateless Architecture Requirement](#53-stateless-architecture-requirement)
+    - [Performance & Capacity Analysis](#54-performance--capacity-analysis)
+    - [Code Changes](#55-code-changes)
+    - [EC2 Production Deployment & Verification Commands](#56-ec2-production-deployment--verification-commands)
+ 6. [Blob Storage & CDN: Presigned URL Offloading (Concepts #22, #23)](#6-blob-storage--cdn-presigned-url-offloading-concepts-22-23)
+    - [The Problem: EC2 as a File Proxy](#61-the-problem-ec2-as-a-file-proxy)
+    - [Presigned URL Architecture](#62-presigned-url-architecture)
+    - [Cloudflare R2 vs Cloudinary: Storage Separation Matrix](#63-cloudflare-r2-vs-cloudinary-storage-separation-matrix)
+    - [Implementation Deep-Dive](#64-implementation-deep-dive)
+    - [Bandwidth Offload Analysis](#65-bandwidth-offload-analysis)
+    - [EC2 Production Deployment & Verification Commands](#66-ec2-production-deployment--verification-commands)
 
 ---
 
@@ -1493,6 +1500,199 @@ curl -I https://learnportal.duckdns.org/
 ```bash
 # Bring instance 2 back
 docker compose start nextjs-2
+```
+
+---
+
+## 6. Blob Storage & CDN: Presigned URL Offloading (Concepts #22, #23)
+
+> **Core Objective:** Eliminate EC2 bandwidth bottleneck by routing all file uploads and downloads through **Cloudflare R2** (S3-compatible, zero egress fees) and **Cloudinary** (media optimization CDN) using **presigned URLs**. The EC2 server never touches the file bytes — it only signs a time-limited URL that the client uses to upload/download directly from the CDN edge.
+> **Target Achievement:** Zero EC2 egress for static assets, automatic image/video optimization, and global CDN caching with sub-50ms latency.
+
+---
+
+### 6.1 The Problem: EC2 as a File Proxy
+
+In naive architectures, the EC2 server acts as a file proxy:
+
+```
+Without CDN Offloading:
+  Client ──► EC2 (Next.js) ──► S3/R2/Cloudinary
+     │            │
+     │            └── EC2 downloads file, then streams it back
+     │               • Wastes EC2 bandwidth
+     │               • Adds 50-200ms latency
+     │               • Costs $0.09/GB egress on EC2
+     ▼
+  Slow, expensive, single-region
+```
+
+**Why this fails at scale:**
+1. **EC2 Bandwidth Caps:** `t3.micro` burst is limited to ~100Mbps. A single 1GB video download saturates this for 80+ seconds.
+2. **Egress Costs:** AWS charges ~$0.09/GB for data leaving EC2. 1TB/month = $90 in egress alone.
+3. **No Geographic Distribution:** EC2 in `eu-north-1` means students in India or US experience 200ms+ latency.
+4. **Process Memory Leaks:** Streaming large files through Node.js can exhaust event loop memory.
+
+---
+
+### 6.2 Presigned URL Architecture
+
+A presigned URL is a time-limited, cryptographically signed URL that grants temporary direct access to a private storage bucket:
+
+```
+With CDN Offloading:
+  Client ──► EC2 (Next.js API)
+     │            │
+     │            ├── 1. Generate presigned URL (signature only, ~1ms)
+     │            └── 2. Return URL to client
+     ▼
+  Client ──► PUT https://r2.cloudflarestorage.com/... (presigned)
+     │
+     └── File goes directly to R2/Cloudinary
+          • EC2 never touches bytes
+          • Global CDN edge caches it
+          • Zero egress cost
+```
+
+#### How Presigned URLs Work
+
+```
+Presigned URL Components:
+https://r2.cloudflarestorage.com/bucket/key?X-Amz-Algorithm=AWS4-HMAC-SHA256
+  &X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20230911%2F...
+  &X-Amz-Date=20230911T000000Z
+  &X-Amz-Expires=3600           ← Expires in 1 hour
+  &X-Amz-SignedHeaders=host
+  &X-Amz-Signature=abc123...    ← HMAC-SHA256 signature
+
+Without valid signature → 403 Forbidden
+After expiration → 403 Forbidden
+```
+
+---
+
+### 6.3 Cloudinary: Storage & Media Optimization
+
+| Data Domain | Storage Engine | Justification |
+| :--- | :--- | :--- |
+| **Course Thumbnails & Instructor Avatars** | Cloudinary | Auto-optimization (`f_auto,q_auto`), on-the-fly resizing, WebP/AVIF conversion |
+| **Student Uploads (Assignments, Projects)** | Cloudinary | Signed uploads, format auto-detection, free tier sufficient for initial scale |
+| **AI Generated Assets (Charts, PDFs)** | Cloudinary | Binary-safe, long retention, automatic format optimization |
+| **Video Lectures** | Cloudinary | Adaptive streaming (`f_mp4`), video player SDK, thumbnail generation |
+
+---
+
+### 6.4 Implementation Deep-Dive
+
+#### 1. Cloudinary Presigned Upload (`lib/cloudinary.ts`)
+
+```typescript
+import { v2 as cloudinary } from 'cloudinary';
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+export function getCloudinaryUploadURL(folder = 'lms/uploads'): string {
+  const timestamp = Math.round(Date.now() / 1000);
+  const signature = cloudinary.utils.api_sign_request(
+    {
+      timestamp,
+      folder,
+      resource_type: 'auto',
+    },
+    process.env.CLOUDINARY_API_SECRET!
+  );
+
+  return `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/auto/upload?timestamp=${timestamp}&signature=${signature}&folder=${folder}`;
+}
+```
+
+#### 2. Presigned Upload API Route (`app/api/upload/presign/route.ts`)
+
+- **`POST /api/upload/presign`**:
+  - Accepts: `{ "filename": "video.mp4", "contentType": "video/mp4" }`
+  - Returns: `{ "uploadURL": "...", "signature": "...", "timestamp": 1694444400, "folder": "lms/uploads" }`
+  - EC2 generates signature in ~1ms, returns URL, never touches file data
+
+#### 3. Presigned Download API Route (`app/api/upload/download/route.ts`)
+
+- **`GET /api/upload/download?publicId=...`**:
+  - Returns a secure Cloudinary delivery URL with optional transformation parameters
+  - Used for student assignment downloads and video streaming
+
+---
+
+### 6.5 Bandwidth Offload Analysis
+
+| Metric | EC2 Proxy Architecture | Cloudinary Presigned URL Architecture | Improvement |
+| :--- | :--- | :--- | :--- |
+| **EC2 Bandwidth per 1GB download** | ~1GB egress | **0 bytes** | **100% offloaded** |
+| **EC2 Bandwidth per 1GB upload** | ~1GB ingress + 1GB egress | **0 bytes** | **100% offloaded** |
+| **Download latency (EU student)** | 200ms (EC2 eu-north-1) | **<50ms** (Cloudinary CDN edge) | **4x faster** |
+| **Image optimization** | None (raw files) | **Auto WebP/AVIF, responsive breakpoints** | **60-80% smaller payloads** |
+| **EC2 CPU per file transfer** | ~15% per concurrent stream | **0%** | **No load** |
+
+---
+
+### 6.6 EC2 Production Deployment & Verification Commands
+
+#### Step 1: Configure Cloudinary Environment Variables
+
+```bash
+# On EC2: append to .env.local
+cat << 'EOF' >> ~/LMS/.env.local
+
+# Cloudinary (media optimization CDN)
+CLOUDINARY_CLOUD_NAME=<your-cloud-name>
+CLOUDINARY_API_KEY=<your-api-key>
+CLOUDINARY_API_SECRET=<your-api-secret>
+EOF
+```
+
+#### Step 2: Verify Presigned Upload
+
+```bash
+# 1. Request a Cloudinary presigned upload URL
+curl -X POST https://learnportal.duckdns.org/api/upload/presign \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filename": "avatar.png",
+    "contentType": "image/png"
+  }' | jq .
+
+# Expected response:
+# {
+#   "success": true,
+#   "uploadURL": "https://api.cloudinary.com/v1_1/<cloud>/auto/upload?...",
+#   "signature": "...",
+#   "timestamp": 1694444400,
+#   "folder": "lms/uploads"
+# }
+```
+
+#### Step 3: Upload File Directly to Cloudinary (EC2 Never Touches It)
+
+```bash
+# Use the uploadURL from Step 2:
+curl -X POST "<uploadURL>" \
+  -F "file=@/path/to/avatar.png"
+```
+
+#### Step 4: Verify Download URL
+
+```bash
+# Get a secure Cloudinary delivery URL
+curl -s "https://learnportal.duckdns.org/api/upload/download?publicId=lms/uploads/avatar_1694444400" | jq .
+```
+
+#### Step 5: Verify Cloudinary Auto-Optimization
+
+```bash
+# Request a transformed/optimized version
+curl -I "https://res.cloudinary.com/<cloud-name>/image/upload/f_auto,q_auto,w_400/lms/uploads/avatar_1694444400"
 ```
 
 ---

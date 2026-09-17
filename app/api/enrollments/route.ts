@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/mongodb';
 import { supabase } from '@/lib/supabase';
+import { getVerifiedUser, requireRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,18 +15,14 @@ export async function GET(request: NextRequest) {
     const courseId = searchParams.get('courseId');
     const queryEmail = searchParams.get('email');
 
-    const cookieStore = await cookies();
-    const cookieEmail = cookieStore.get('user_email')?.value;
-    const cookieRole = cookieStore.get('user_role')?.value;
-
-    const email = (queryEmail || cookieEmail || '').toLowerCase().trim();
-
     if (!courseId) {
       return NextResponse.json({ error: 'courseId query parameter is required' }, { status: 400 });
     }
 
+    const verifiedUser = await getVerifiedUser(request);
+
     // Unauthenticated guest user
-    if (!email) {
+    if (!verifiedUser) {
       return NextResponse.json({
         isEnrolled: false,
         email: null,
@@ -35,6 +31,11 @@ export async function GET(request: NextRequest) {
         message: 'No authenticated user session found',
       });
     }
+
+    // Only admin can inspect another student's enrollment
+    const email = (queryEmail && verifiedUser.role === 'admin')
+      ? queryEmail.toLowerCase().trim()
+      : verifiedUser.email;
 
     let isEnrolled = false;
     let enrollmentData: any = null;
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       if (db) {
         const doc = await db.collection('course_enrollments').findOne({
           studentEmail: email,
-          courseId: courseId,
+          courseId: String(courseId),
         });
 
         if (doc) {
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
           .from('enrollments')
           .select('*')
           .eq('user_email', email)
-          .eq('course_id', courseId)
+          .eq('course_id', String(courseId))
           .maybeSingle();
 
         if (!error && data) {
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       isEnrolled,
       email,
-      role: cookieRole || 'student',
+      role: verifiedUser.role,
       courseId,
       enrollment: enrollmentData,
     });
@@ -98,13 +99,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Direct manual enrollment creation requires admin privileges
+    const { user, response } = await requireRole('admin', request);
+    if (response) return response;
+
     const body = await request.json();
     const { courseId, courseTitle, studentEmail, paymentId, invoiceId, amount } = body;
 
-    const cookieStore = await cookies();
-    const sessionEmail = cookieStore.get('user_email')?.value;
-
-    const email = (studentEmail || sessionEmail || '').toLowerCase().trim();
+    const email = studentEmail ? String(studentEmail).toLowerCase().trim() : user!.email;
 
     if (!courseId || !email) {
       return NextResponse.json(
@@ -114,12 +116,12 @@ export async function POST(request: NextRequest) {
     }
 
     const enrollmentRecord = {
-      courseId,
+      courseId: String(courseId),
       courseTitle: courseTitle || 'Course Masterclass',
       studentEmail: email,
-      paymentId: paymentId || `pay_manual_${Date.now()}`,
+      paymentId: paymentId || `pay_admin_${Date.now()}`,
       invoiceId: invoiceId || `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      amount: amount || 19999,
+      amount: typeof amount === 'number' ? amount : 19999,
       status: 'active',
       enrolledAt: new Date().toISOString(),
       createdAt: new Date(),
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
       const db = await getDatabase();
       if (db) {
         await db.collection('course_enrollments').updateOne(
-          { studentEmail: email, courseId: courseId },
+          { studentEmail: email, courseId: String(courseId) },
           { $set: enrollmentRecord },
           { upsert: true }
         );
@@ -146,7 +148,7 @@ export async function POST(request: NextRequest) {
         .upsert(
           {
             user_email: email,
-            course_id: courseId,
+            course_id: String(courseId),
             enrolled_at: new Date().toISOString(),
           },
           { onConflict: 'user_email,course_id' }

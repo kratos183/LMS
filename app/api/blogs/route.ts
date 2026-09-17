@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getOrSetCache, invalidateCache } from '@/lib/redis';
+import { requireRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -50,11 +50,8 @@ export async function GET() {
 // POST /api/blogs — Create a new blog post (admin only)
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
-    }
+    const { response } = await requireRole('admin', request);
+    if (response) return response;
 
     const body = await request.json();
     const { title, author, category, excerpt, image, content, tags } = body;
@@ -65,14 +62,14 @@ export async function POST(request: NextRequest) {
 
     const db = getSupabaseClient(true);
     const { data, error } = await db.from('blogs').insert([{
-      title,
-      author: author || 'Admin',
-      category: category || 'General',
-      excerpt: excerpt || '',
-      image: image || '',
+      title: String(title).trim(),
+      author: String(author || 'Admin').trim(),
+      category: String(category || 'General').trim(),
+      excerpt: String(excerpt || '').trim(),
+      image: String(image || '').trim(),
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      content: content || [],
-      tags: tags || [],
+      content: Array.isArray(content) ? content : [],
+      tags: Array.isArray(tags) ? tags : [],
       comments: [],
       comments_count: 0,
     }]).select().single();
@@ -91,11 +88,8 @@ export async function POST(request: NextRequest) {
 // DELETE /api/blogs — Delete a blog post (admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
-    }
+    const { response } = await requireRole('admin', request);
+    if (response) return response;
 
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: 'Blog ID is required.' }, { status: 400 });

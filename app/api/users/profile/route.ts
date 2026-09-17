@@ -1,26 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase';
 import { getDatabase } from '@/lib/mongodb';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Get current authenticated user profile
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const userEmail = cookieStore.get('user_email')?.value?.toLowerCase().trim();
-    const userId = cookieStore.get('user_id')?.value;
-    const userRole = cookieStore.get('user_role')?.value || 'student';
+    const { user, response } = await requireAuth(request);
+    if (response) return response;
 
-    if (!userEmail) {
-      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-    }
+    const userEmail = user!.email;
+    const userId = user!.id;
+    const userRole = user!.role;
 
     let profile = {
-      id: userId || '',
+      id: userId,
       email: userEmail,
       username: userEmail.split('@')[0],
       fullName: userEmail.split('@')[0].replace(/[._-]/g, ' '),
@@ -79,14 +77,12 @@ export async function GET() {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const userEmail = cookieStore.get('user_email')?.value?.toLowerCase().trim();
-    let userId = cookieStore.get('user_id')?.value;
-    const userRole = cookieStore.get('user_role')?.value || 'student';
+    const { user, response } = await requireAuth(request);
+    if (response) return response;
 
-    if (!userEmail) {
-      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-    }
+    const userEmail = user!.email;
+    const userId = user!.id;
+    const userRole = user!.role;
 
     const body = await request.json();
     const { username, fullName, bio, avatarUrl, currentPassword, newPassword, socialLinks } = body;
@@ -94,39 +90,35 @@ export async function PUT(request: NextRequest) {
     const adminClient = createSupabaseAdminClient();
     const serverClient = createSupabaseServerClient();
 
-    // If userId not in cookie, attempt to locate user in Supabase by email
-    if (!userId && adminClient) {
-      try {
-        const { data: usersList } = await adminClient.auth.admin.listUsers();
-        const found = (usersList?.users as any[])?.find((u: any) => u.email?.toLowerCase() === userEmail);
-        if (found) userId = found.id;
-      } catch {}
-    }
-
     // =========================================================================
     // 1. PASSWORD UPDATE
     // =========================================================================
     if (newPassword) {
-      if (newPassword.length < 6) {
+      if (typeof newPassword !== 'string' || newPassword.length < 6) {
         return NextResponse.json(
           { error: 'New password must be at least 6 characters long.' },
           { status: 400 }
         );
       }
 
-      // If current password provided, verify it first
-      if (currentPassword) {
-        const { error: verifyErr } = await serverClient.auth.signInWithPassword({
-          email: userEmail,
-          password: currentPassword,
-        });
+      // Strictly require and verify current password
+      if (!currentPassword || typeof currentPassword !== 'string') {
+        return NextResponse.json(
+          { error: 'Current password is required to set a new password.' },
+          { status: 400 }
+        );
+      }
 
-        if (verifyErr) {
-          return NextResponse.json(
-            { error: 'Current password is incorrect. Please verify and try again.' },
-            { status: 400 }
-          );
-        }
+      const { error: verifyErr } = await serverClient.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+
+      if (verifyErr) {
+        return NextResponse.json(
+          { error: 'Current password is incorrect. Please verify and try again.' },
+          { status: 400 }
+        );
       }
 
       // Update password via Supabase Admin API
@@ -139,11 +131,10 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: updatePassErr.message }, { status: 400 });
         }
       } else {
-        // Direct client session update fallback
         const { error: directErr } = await serverClient.auth.updateUser({
           password: newPassword,
         });
-        if (directErr && !adminClient) {
+        if (directErr) {
           return NextResponse.json({ error: directErr.message }, { status: 400 });
         }
       }
@@ -152,10 +143,10 @@ export async function PUT(request: NextRequest) {
     // =========================================================================
     // 2. PROFILE METADATA UPDATE (Username, Full Name, Bio, Avatar)
     // =========================================================================
-    const cleanUsername = (username || userEmail.split('@')[0]).trim();
-    const cleanFullName = (fullName || cleanUsername).trim();
-    const cleanBio = (bio || '').trim();
-    const cleanAvatar = avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}`;
+    const cleanUsername = String(username || userEmail.split('@')[0]).trim().slice(0, 50);
+    const cleanFullName = String(fullName || cleanUsername).trim().slice(0, 100);
+    const cleanBio = String(bio || '').trim().slice(0, 500);
+    const cleanAvatar = avatarUrl ? String(avatarUrl).trim() : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}`;
 
     // Update in Supabase Auth user_metadata
     if (adminClient && userId) {
@@ -184,12 +175,12 @@ export async function PUT(request: NextRequest) {
           {
             $set: {
               email: userEmail,
-              userId: userId || null,
+              userId: userId,
               username: cleanUsername,
               fullName: cleanFullName,
               bio: cleanBio,
               avatarUrl: cleanAvatar,
-              socialLinks: socialLinks || {},
+              socialLinks: typeof socialLinks === 'object' && socialLinks !== null ? socialLinks : {},
               updatedAt: new Date(),
             },
           },
@@ -228,7 +219,7 @@ export async function PUT(request: NextRequest) {
         bio: cleanBio,
         avatarUrl: cleanAvatar,
         role: userRole,
-        socialLinks: socialLinks || {},
+        socialLinks: typeof socialLinks === 'object' && socialLinks !== null ? socialLinks : {},
       },
     });
   } catch (error: any) {

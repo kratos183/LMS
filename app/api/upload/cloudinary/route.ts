@@ -1,22 +1,28 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { requireRole } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check — only instructors/admins can upload
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (!role || (role !== 'instructor' && role !== 'admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Auth check — only verified instructors/admins can upload
+    const { response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return NextResponse.json({ error: 'Cloudinary credentials not configured' }, { status: 500 });
     }
 
-    // Configure cloudinary inside handler to avoid module-level env issues
+    // Configure cloudinary inside handler
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const type = (formData.get('type') as string) || 'video'; // 'video' | 'image'
@@ -24,6 +30,12 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // Max 100MB for direct multipart upload to prevent memory exhaustion
+    const MAX_DIRECT_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_DIRECT_SIZE) {
+      return NextResponse.json({ error: 'File exceeds maximum direct upload size limit (100MB).' }, { status: 413 });
     }
 
     // Convert File to buffer
@@ -35,7 +47,7 @@ export async function POST(request: NextRequest) {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: type === 'video' ? 'video' : 'image',
-          folder,
+          folder: folder.replace(/[^a-zA-Z0-9_\-/]/g, ''),
           // For videos: auto quality + format for best compression
           ...(type === 'video' && {
             eager: [{ quality: 'auto', fetch_format: 'auto' }],

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getOrSetCache, invalidateCache } from '@/lib/redis';
+import { requireRole, getVerifiedUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -25,14 +25,18 @@ export async function GET(request: NextRequest) {
 
   // If instructor requesting private "mine" courses, query DB directly (authenticated)
   if (mine === 'true') {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'instructor' && role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
 
     const db = getSupabaseClient(false);
-    const { data, error } = await db.from('courses').select('*').order('created_at', { ascending: false });
+    let query = db.from('courses').select('*').order('created_at', { ascending: false });
+    
+    // If instructor, only return their own courses; admin sees all
+    if (user!.role === 'instructor') {
+      query = query.eq('instructor', user!.email);
+    }
+
+    const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ courses: data }, { headers: { 'X-Cache': 'BYPASS' } });
   }
@@ -69,11 +73,8 @@ export async function GET(request: NextRequest) {
 // POST /api/courses — create a new course (instructor only)
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'instructor' && role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
 
     const body = await request.json();
     const {
@@ -85,26 +86,29 @@ export async function POST(request: NextRequest) {
 
     if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
 
+    const instructorEmail = user!.role === 'admin' ? (instructor || user!.email) : user!.email;
+    const displayName = instructor_name || instructor || user!.email.split('@')[0];
+
     const db = getSupabaseClient(true);
     const { data, error } = await db.from('courses').insert([{
-      title,
+      title: String(title).trim(),
       description: description || '',
       category: category || 'Development',
       price: parseFloat(price) || 0,
       level: level || 'Beginner',
-      instructor: instructor || instructor_name || 'Instructor',
+      instructor: instructorEmail,
       thumbnail_url: thumbnail_url || '',
       status: status || 'draft',
-      what_you_learn: what_you_learn || [],
-      requirements: requirements || [],
+      what_you_learn: Array.isArray(what_you_learn) ? what_you_learn : [],
+      requirements: Array.isArray(requirements) ? requirements : [],
       rating: 5.0,
       students: 0,
       original_price: original_price ?? null,
-      instructor_name: instructor_name || instructor || 'Instructor',
+      instructor_name: displayName,
       instructor_title: instructor_title || '',
       instructor_bio: instructor_bio || '',
       instructor_image: instructor_image || '',
-      faqs: faqs || [],
+      faqs: Array.isArray(faqs) ? faqs : [],
     }]).select().single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -121,17 +125,23 @@ export async function POST(request: NextRequest) {
 // PATCH /api/courses — update course status or details
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'instructor' && role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
 
     const body = await request.json();
     const { id, ...updates } = body;
     if (!id) return NextResponse.json({ error: 'Course id required' }, { status: 400 });
 
     const db = getSupabaseClient(true);
+
+    // Ownership check: instructors can only edit their own courses
+    if (user!.role === 'instructor') {
+      const { data: existing } = await db.from('courses').select('instructor').eq('id', id).single();
+      if (!existing || existing.instructor !== user!.email) {
+        return NextResponse.json({ error: 'Forbidden: you do not own this course' }, { status: 403 });
+      }
+    }
+
     const { data, error } = await db.from('courses').update(updates).eq('id', id).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -147,14 +157,22 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/courses — delete a course
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get('user_role')?.value;
-    if (role !== 'instructor' && role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user, response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
 
     const { id } = await request.json();
+    if (!id) return NextResponse.json({ error: 'Course id required' }, { status: 400 });
+
     const db = getSupabaseClient(true);
+
+    // Ownership check: instructors can only delete their own courses
+    if (user!.role === 'instructor') {
+      const { data: existing } = await db.from('courses').select('instructor').eq('id', id).single();
+      if (!existing || existing.instructor !== user!.email) {
+        return NextResponse.json({ error: 'Forbidden: you do not own this course' }, { status: 403 });
+      }
+    }
+
     const { error } = await db.from('courses').delete().eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

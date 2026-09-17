@@ -12,5 +12,6 @@ export async function POST() {
   response.cookies.set('user_role', '', cookieOptions);
   response.cookies.set('user_email', '', cookieOptions);
   response.cookies.set('user_id', '', cookieOptions);
+  response.cookies.set('sb-access-token', '', cookieOptions);
   return response;
 }

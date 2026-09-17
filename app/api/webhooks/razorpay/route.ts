@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_webhook_secret_edupress_2026';
+const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'rzp_webhook_secret_edupress_2026');
 const WS_SERVICE_URL = process.env.WS_SERVICE_URL || 'http://127.0.0.1:4000';
 
 /**
@@ -48,6 +48,13 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.text();
     const signature = req.headers.get('x-razorpay-signature') || '';
     const eventId = req.headers.get('x-razorpay-event-id') || `evt_${Date.now()}`;
+
+    if (!WEBHOOK_SECRET) {
+      return NextResponse.json(
+        { success: false, error: 'Razorpay webhook secret is not configured on server.' },
+        { status: 500 }
+      );
+    }
 
     // =========================================================================
     // STEP 1: CRYPTOGRAPHIC SIGNATURE VERIFICATION

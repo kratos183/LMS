@@ -1,8 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { response } = await requireRole('admin', request);
+    if (response) return response;
+
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, full_name, role, avatar_url, created_at')
@@ -20,6 +24,9 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const { response } = await requireRole('admin', request);
+    if (response) return response;
+
     const { userId, role, status } = await request.json();
 
     if (!userId) {
@@ -27,8 +34,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updates: Record<string, any> = {};
-    if (role) updates.role = role;
-    if (typeof status !== 'undefined') updates.status = status;
+    if (role && ['student', 'instructor', 'admin'].includes(role)) {
+      updates.role = role;
+    }
+    if (typeof status !== 'undefined') {
+      updates.status = status;
+    }
 
     const { data, error } = await supabase
       .from('profiles')

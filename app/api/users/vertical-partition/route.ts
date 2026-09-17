@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createSupabaseServerClient } from '@/lib/supabase';
 import { getDatabase } from '@/lib/mongodb';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,20 +14,23 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const startTime = performance.now();
+  
+  const { user, response } = await requireAuth(request);
+  if (response) return response;
+
   const searchParams = request.nextUrl.searchParams;
   const mode = searchParams.get('mode') || 'comparison'; // 'auth' | 'profile' | 'comparison' | 'all'
   const emailQuery = searchParams.get('email')?.toLowerCase().trim();
 
-  const cookieStore = await cookies();
-  const sessionEmail = cookieStore.get('user_email')?.value?.toLowerCase().trim();
-  const targetEmail = emailQuery || sessionEmail || 'student@example.com';
+  // If viewing someone else's partition data, user must be admin
+  const targetEmail = (emailQuery && user!.role === 'admin') ? emailQuery : user!.email;
 
   try {
     // 1. Fetch from Vertical Partition 1: users_auth (Narrow & High-Frequency)
     const authData = {
       id: 'usr_auth_' + Buffer.from(targetEmail).toString('hex').slice(0, 12),
       email: targetEmail,
-      role: 'STUDENT',
+      role: user!.role.toUpperCase(),
       status: 'ACTIVE',
       lastLoginAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
       failedLoginAttempts: 0,
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest) {
       approxRowSizeBytes: 648,
     };
 
-    // Enrich from MongoDB Atlas or Supabase if available
+    // Enrich from MongoDB Atlas if available
     try {
       const db = await getDatabase();
       if (db) {
@@ -88,7 +90,7 @@ export async function GET(request: NextRequest) {
         metrics: {
           latencyMs,
           payloadSizeBytes: authData.approxRowSizeBytes,
-          pageDensity8KB: Math.floor(8192 / authData.approxRowSizeBytes), // ~73 rows per 8KB page
+          pageDensity8KB: Math.floor(8192 / authData.approxRowSizeBytes),
           efficiencyGain: '82.7% memory & I/O savings vs. monolithic wide row',
         },
       });
@@ -103,13 +105,13 @@ export async function GET(request: NextRequest) {
         metrics: {
           latencyMs,
           payloadSizeBytes: profileData.approxRowSizeBytes,
-          pageDensity8KB: Math.floor(8192 / profileData.approxRowSizeBytes), // ~12 rows per 8KB page
+          pageDensity8KB: Math.floor(8192 / profileData.approxRowSizeBytes),
         },
       });
     }
 
     // Default: Complete Architectural Benchmark & Comparison Mode
-    const monolithicSizeBytes = authData.approxRowSizeBytes + profileData.approxRowSizeBytes; // ~760 bytes
+    const monolithicSizeBytes = authData.approxRowSizeBytes + profileData.approxRowSizeBytes;
     const authSavingsPercent = Math.round(((monolithicSizeBytes - authData.approxRowSizeBytes) / monolithicSizeBytes) * 100);
 
     return NextResponse.json({
@@ -151,19 +153,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const { user, response } = await requireAuth(request);
+    if (response) return response;
+
     const body = await request.json();
     const { email, role, status, bio, preferences, avatarUrl, username, fullName } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required to partition user record.' }, { status: 400 });
-    }
-
-    const cleanEmail = email.toLowerCase().trim();
+    // Only admin can partition arbitrary email, regular user can only partition their own email
+    const cleanEmail = (email && user!.role === 'admin') ? email.toLowerCase().trim() : user!.email;
 
     // 1. Write to Vertical Partition 1 (users_auth)
     const authRecord = {
       email: cleanEmail,
-      role: role || 'STUDENT',
+      role: (user!.role === 'admin' && role) ? role : user!.role.toUpperCase(),
       status: status || 'ACTIVE',
       updatedAt: new Date(),
     };

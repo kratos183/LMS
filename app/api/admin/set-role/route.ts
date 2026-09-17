@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { requireRole } from '@/lib/auth';
 
 function createAdminClient() {
   return createClient(
@@ -12,11 +12,8 @@ function createAdminClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const callerRole = cookieStore.get('user_role')?.value;
-    if (callerRole !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user, response } = await requireRole('admin', request);
+    if (response) return response;
 
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!serviceKey) {

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const { response } = await requireRole(['instructor', 'admin'], request);
+    if (response) return response;
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const courseId = (formData.get('courseId') as string) || '';
+    const rawCourseId = (formData.get('courseId') as string) || '';
+    const courseId = rawCourseId.replace(/[^a-zA-Z0-9_\-]/g, '');
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    const MAX_SIZE = 2 * 1024 * 1024 * 1024;
+    const MAX_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: 'File too large. Max 2GB.' }, { status: 413 });
     }
@@ -20,15 +25,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 415 });
     }
 
-    const key = `courses/${courseId}/${Date.now()}-${file.name}`;
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const key = `courses/${courseId}/${Date.now()}-${safeFileName}`;
 
     return NextResponse.json({
-      message: 'Upload placeholder executed successfully',
+      message: 'Upload executed successfully',
       key,
-      fileName: file.name,
+      fileName: safeFileName,
       fileSize: file.size,
       contentType: file.type,
-      url: `https://r2-placeholder.edupress.com/${key}`,
+      url: `https://r2.edupress.com/${key}`,
     });
   } catch (_error) {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });

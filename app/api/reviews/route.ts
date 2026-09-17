@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
     const courseId = searchParams.get('courseId');
     const instructorName = searchParams.get('instructorName');
     const email = searchParams.get('email');
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
 
     const db = await getDatabase();
     let reviews: any[] = [];
@@ -128,38 +129,43 @@ export async function POST(req: NextRequest) {
   const startTime = performance.now();
 
   try {
+    const { user, response } = await requireAuth(req);
+    if (response) return response;
+
     const body = await req.json();
     const {
       course_id,
       course_title,
       instructor_name,
       student_name,
-      student_email,
       student_avatar,
       rating,
       text,
     } = body;
 
-    if (!course_id || !text) {
+    if (!course_id || !text || typeof text !== 'string' || text.trim().length === 0) {
       return NextResponse.json(
-        { success: false, error: 'course_id and text are required.' },
+        { success: false, error: 'course_id and valid review text are required.' },
         { status: 400 }
       );
     }
+
+    const cleanRating = Math.max(1, Math.min(5, Number(rating) || 5));
+    const cleanStudentName = student_name ? String(student_name).trim().slice(0, 80) : user!.email.split('@')[0];
 
     // Denormalized Record: Redundantly store instructor_name, course_title, and student_name directly
     const newReview = {
       id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       course_id: String(course_id),
-      course_title: course_title || 'Full Stack Web Development',
-      instructor_name: instructor_name || 'John Doe',
-      student_name: student_name || 'Ethan Hunt',
-      student_email: student_email || 'ethan@example.com',
+      course_title: course_title ? String(course_title).trim() : 'Course',
+      instructor_name: instructor_name ? String(instructor_name).trim() : 'Instructor',
+      student_name: cleanStudentName,
+      student_email: user!.email,
       student_avatar:
-        student_avatar ||
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
-      rating: Number(rating) || 5,
-      text: String(text).trim(),
+        student_avatar ? String(student_avatar).trim() :
+        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user!.email)}`,
+      rating: cleanRating,
+      text: String(text).trim().slice(0, 2000),
       date: 'Just now',
       created_at: new Date().toISOString(),
     };

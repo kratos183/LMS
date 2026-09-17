@@ -32,10 +32,11 @@ function getRoleFromPath(pathname: string): { path: string; requiredRole: string
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const url = new URL(request.url);
+  const token = request.cookies.get('sb-access-token')?.value;
   const role = request.cookies.get('user_role')?.value;
 
   if (PUBLIC_PATHS.includes(pathname)) {
-    if (pathname === '/login-page' && role) {
+    if (pathname === '/login-page' && token && role) {
       const dashboards: Record<string, string> = {
         student: '/Student-Dashboard',
         instructor: '/Instructor-Dashboard',
@@ -52,7 +53,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!role) {
+  if (!token || !role) {
     url.searchParams.set('next', pathname);
     return NextResponse.redirect(new URL('/login-page', url));
   }

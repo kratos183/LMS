@@ -1,14 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const callerRole = cookieStore.get('user_role')?.value;
-    if (callerRole !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { user, response } = await requireRole('admin', request);
+    if (response) return response;
 
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!serviceKey) {

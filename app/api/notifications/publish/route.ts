@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ const WS_SERVICE_URL = process.env.WS_SERVICE_URL || 'http://127.0.0.1:4000';
  */
 export async function POST(req: NextRequest) {
   try {
+    const { response } = await requireRole(['instructor', 'admin'], req);
+    if (response) return response;
+
     const body = await req.json();
     const { type, payload } = body;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { getDatabase } from '@/lib/mongodb';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,9 +82,15 @@ export async function POST(req: NextRequest) {
   const startTime = performance.now();
 
   try {
+    // Verify session first — unauthenticated users cannot use the AI
+    const { user, response: authResponse } = await requireAuth(req);
+    if (authResponse) return authResponse;
+
     const body = await req.json();
     const { messages, studentContext, conversationId, title } = body;
-    const studentEmail = (studentContext?.email || req.cookies.get('user_email')?.value || 'student@example.com').toLowerCase().trim();
+
+    // Always use the verified session email — never trust the request body email
+    const studentEmail = user!.email.toLowerCase().trim();
     const studentName = studentContext?.name || studentEmail.split('@')[0] || 'Student';
     const totalSpent = studentContext?.totalSpent || '₹0';
     const lastUserMessage = messages && messages.length > 0
@@ -93,8 +100,9 @@ export async function POST(req: NextRequest) {
     // =========================================================================
     // STEP 1: RATE LIMITING DEFENSE (Concept #28 - 10 queries/min limit)
     // =========================================================================
+    // Rate limit by verified email — cannot be bypassed by changing request body
     const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || '';
-    const identifier = studentEmail || rawIp || 'client_default';
+    const identifier = studentEmail;
 
     const rateLimit = await checkRateLimit(identifier, 10, 60);
 

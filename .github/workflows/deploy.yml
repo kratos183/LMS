@@ -71,15 +71,19 @@ jobs:
             git reset --hard origin/Main
             git pull origin Main
 
+            echo "🧹 Cleaning up unused Docker layers & cache to free disk space..."
+            docker system prune -af --volumes || true
+            docker builder prune -af || true
+
             echo "🔨 Rebuilding and restarting containers..."
-            docker compose down
+            docker compose down --remove-orphans || true
             docker compose up -d --build
 
             echo "🔍 Running health checks..."
-            sleep 10
+            sleep 12
 
             echo "Checking Next.js frontend..."
-            curl -f -I http://127.0.0.1:3000/ || echo "⚠️ Frontend health check failed"
+            curl -f -I http://127.0.0.1:3001/ || echo "⚠️ Frontend health check failed"
 
             echo "Checking AI microservice..."
             curl -f http://127.0.0.1:5000/api/ai/health || echo "⚠️ AI service health check failed"

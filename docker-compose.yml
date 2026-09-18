@@ -37,6 +37,7 @@ services:
         condition: service_healthy
 
   nextjs-1:
+    image: lms-nextjs:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -59,13 +60,7 @@ services:
         condition: service_started
 
   nextjs-2:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+    image: lms-nextjs:latest
     restart: unless-stopped
     ports:
       - "3002:3000"
@@ -73,6 +68,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
     depends_on:
+      nextjs-1:
+        condition: service_started
       redis:
         condition: service_healthy
       ai-service:
@@ -81,13 +78,7 @@ services:
         condition: service_started
 
   nextjs-3:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+    image: lms-nextjs:latest
     restart: unless-stopped
     ports:
       - "3003:3000"
@@ -95,6 +86,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
     depends_on:
+      nextjs-1:
+        condition: service_started
       redis:
         condition: service_healthy
       ai-service:
